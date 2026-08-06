@@ -1,3 +1,4 @@
+# Executable trigger after initial workflow registration.
 name: MAX Web canary
 
 on:
