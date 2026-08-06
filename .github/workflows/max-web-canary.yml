@@ -8,44 +8,12 @@ on:
         required: false
         default: Привет мир
         type: string
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/max-web-canary.yml
-      - .max-canary-trigger
-  pull_request:
-    branches:
-      - main
-    types:
-      - opened
-      - reopened
-      - synchronize
-  pull_request_target:
-    branches:
-      - main
-    types:
-      - opened
-      - reopened
-      - synchronize
-  issue_comment:
-    types:
-      - created
-  schedule:
-    - cron: '*/5 * * * *'
-
-concurrency:
-  group: max-web-canary-current
-  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
   send-to-saved:
-    if: >-
-      github.event_name != 'issue_comment' ||
-      (github.event.issue.pull_request && github.event.comment.body == '/max-canary-public')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -56,8 +24,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
