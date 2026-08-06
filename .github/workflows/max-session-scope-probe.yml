@@ -1,0 +1,31 @@
+name: MAX session scope probe
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/max-session-scope-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Report presence flags without exposing values
+        env:
+          HAS_ACTIONS_SECRET: ${{ secrets.MAX_SESSION != '' }}
+          HAS_ACTIONS_VARIABLE: ${{ vars.MAX_SESSION != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "has_actions_secret=${HAS_ACTIONS_SECRET}"
+          echo "has_actions_variable=${HAS_ACTIONS_VARIABLE}"
+          if [[ "$HAS_ACTIONS_SECRET" != "true" ]]; then
+            echo "::error::MAX_SESSION is not available as a repository Actions secret."
+            exit 1
+          fi
