@@ -24,6 +24,9 @@ on:
       - .github/workflows/max-web-canary.yml
       - scripts/max-web-canary.mjs
       - package.json
+  issue_comment:
+    types:
+      - created
 
 concurrency:
   group: max-web-canary
@@ -34,6 +37,7 @@ permissions:
 
 jobs:
   send-to-saved:
+    if: github.event_name != 'issue_comment' || (github.event.issue.pull_request && github.event.comment.body == '/max-canary')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
