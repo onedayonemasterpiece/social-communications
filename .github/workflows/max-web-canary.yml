@@ -17,6 +17,13 @@ on:
       - .github/workflows/max-web-canary.yml
       - scripts/max-web-canary.mjs
       - package.json
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/max-web-canary.yml
+      - scripts/max-web-canary.mjs
+      - package.json
 
 concurrency:
   group: max-web-canary
