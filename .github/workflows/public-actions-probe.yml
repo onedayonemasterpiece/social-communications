@@ -1,0 +1,22 @@
+name: Repository runner probe
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/public-actions-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Confirm runner allocation
+        run: |
+          echo "runner-ok"
+          uname -a
