@@ -13,10 +13,13 @@ on:
       - main
     paths:
       - .github/workflows/max-web-canary.yml
-
-concurrency:
-  group: max-web-canary-public-run
-  cancel-in-progress: true
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
 
 permissions:
   contents: read
