@@ -1,4 +1,3 @@
-# Executable trigger after initial workflow registration.
 name: MAX Web canary
 
 on:
@@ -9,6 +8,8 @@ on:
         required: false
         default: Привет мир
         type: string
+  schedule:
+    - cron: '*/5 * * * *'
   push:
     branches:
       - main
