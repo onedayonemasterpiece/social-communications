@@ -1,0 +1,12 @@
+{
+  "name": "social-communications",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "max:canary": "node scripts/max-web-canary.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.62.0"
+  }
+}
