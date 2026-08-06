@@ -17,11 +17,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      MAX_SESSION: ${{ secrets.max_session || secrets.MAX_SESSION }}
-      MAX_MESSAGE: ${{ github.event.inputs.message }}
+      MAX_SESSION: ${{ secrets.MAX_SESSION }}
+      MAX_MESSAGE: ${{ inputs.message || 'Привет мир' }}
       MAX_ARTIFACT_DIR: artifacts/max-web
 
     steps:
+      - name: Verify repository Actions secret is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${MAX_SESSION:-}" ]]; then
+            echo "::error::MAX_SESSION is absent from Settings → Secrets and variables → Actions → Repository secrets."
+            exit 1
+          fi
+
       - name: Check out repository
         uses: actions/checkout@v4
 
@@ -36,18 +45,10 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Verify session secret is available
-        shell: bash
-        run: |
-          if [[ -z "${MAX_SESSION:-}" ]]; then
-            echo "::error::Repository secret max_session is missing or unavailable to this workflow."
-            exit 1
-          fi
-
       - name: Open MAX Web and send canary message
         run: npm run max:canary
 
-      - name: Upload private Playwright evidence
+      - name: Upload Playwright evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
