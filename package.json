@@ -1,6 +1,7 @@
 {
   "name": "social-communications",
   "version": "0.1.0",
+  "description": "Reproducible private browser automation for social communication channels",
   "private": true,
   "type": "module",
   "scripts": {
