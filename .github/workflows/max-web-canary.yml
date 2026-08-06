@@ -8,10 +8,15 @@ on:
         required: false
         default: Привет мир
         type: string
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/max-web-canary.yml
 
 concurrency:
-  group: max-web-canary
-  cancel-in-progress: false
+  group: max-web-canary-public-run
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -58,4 +63,4 @@ jobs:
           name: max-web-canary-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/max-web
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 1
