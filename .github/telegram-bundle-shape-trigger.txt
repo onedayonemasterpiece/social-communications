@@ -1,2 +1,2 @@
-requested_at=2026-08-07T11:25:00Z
-purpose=shape-only-no-values
+requested_at=2026-08-07T11:30:00Z
+purpose=bundle-and-api-credential-source-shape-only-no-values
