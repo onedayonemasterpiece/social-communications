@@ -1,3 +1,3 @@
-requested_at=2026-08-07T06:29:00Z
-artifact_ids=8984230617
-reason=MAX calendar and attachment menu evidence analyzed
+requested_at=2026-08-07T06:41:00Z
+artifact_ids=8984312534
+reason=MAX schedule dry-run evidence analyzed
