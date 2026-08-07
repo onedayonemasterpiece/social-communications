@@ -8,18 +8,29 @@ import {
   normalizeText,
 } from './max-ui.mjs';
 
+export const MAX_VISUAL_BLANK_LINE = '\u2800';
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   })[character]);
 }
 
-function paragraphBlocks(value) {
+function paragraphs(value) {
   return String(value ?? '')
     .replace(/\r\n?/g, '\n')
     .split(/\n{2,}/)
+    .filter((paragraph) => paragraph.length > 0);
+}
+
+function paragraphBlocks(value) {
+  return paragraphs(value)
     .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
-    .join('');
+    .join(`<p>${MAX_VISUAL_BLANK_LINE}</p>`);
+}
+
+function plainParagraphBlocks(value) {
+  return paragraphs(value).join(`\n${MAX_VISUAL_BLANK_LINE}\n`);
 }
 
 export function canonicalUrl(value) {
@@ -28,14 +39,14 @@ export function canonicalUrl(value) {
 
 export function richCaptionClipboardPayload(content) {
   const htmlParts = [paragraphBlocks(content.text)];
-  const plainParts = [content.text];
+  const plainParts = [plainParagraphBlocks(content.text)];
   for (const link of content.links) {
-    htmlParts.push(`<p><a href="${escapeHtml(canonicalUrl(link.url))}">${escapeHtml(link.text)}</a></p>`);
-    plainParts.push(link.text);
+    htmlParts.push(`<p>${MAX_VISUAL_BLANK_LINE}</p><p><a href="${escapeHtml(canonicalUrl(link.url))}">${escapeHtml(link.text)}</a></p>`);
+    plainParts.push(`${MAX_VISUAL_BLANK_LINE}\n${link.text}`);
   }
   return {
     html: htmlParts.join(''),
-    plainText: plainParts.join('\n\n'),
+    plainText: plainParts.join('\n'),
   };
 }
 
