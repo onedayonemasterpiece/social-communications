@@ -1,0 +1,50 @@
+name: MAX artifact cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/max-artifact-cleanup-request.txt
+  workflow_dispatch:
+    inputs:
+      artifact_ids:
+        description: Space-separated GitHub Actions artifact IDs
+        required: true
+        type: string
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPOSITORY: ${{ github.repository }}
+      INPUT_IDS: ${{ github.event.inputs.artifact_ids }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Delete requested evidence artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ids="${INPUT_IDS:-}"
+          if [[ -z "$ids" ]]; then
+            ids="$(sed -n 's/^artifact_ids=//p' .github/max-artifact-cleanup-request.txt | tail -n 1)"
+          fi
+          if [[ -z "$ids" ]]; then
+            echo "::error::No artifact IDs were provided."
+            exit 1
+          fi
+          for artifact_id in $ids; do
+            if gh api --method DELETE "repos/${REPOSITORY}/actions/artifacts/${artifact_id}" >/dev/null 2>/tmp/delete-error; then
+              echo "DELETED_ARTIFACT=${artifact_id}"
+            elif grep -q 'HTTP 404' /tmp/delete-error; then
+              echo "ARTIFACT_ALREADY_ABSENT=${artifact_id}"
+            else
+              cat /tmp/delete-error >&2
+              exit 1
+            fi
+          done
