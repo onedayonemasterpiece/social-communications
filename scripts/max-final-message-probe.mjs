@@ -120,7 +120,44 @@ async function inspectStructure(item) {
   });
 }
 
-async function visibleMenuSnapshot(page) {
+async function elementControlsSnapshot(item) {
+  return item.evaluate((element) => {
+    const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+    const visible = (node) => {
+      const style = getComputedStyle(node);
+      const box = node.getBoundingClientRect();
+      return style.display !== 'none'
+        && style.visibility !== 'hidden'
+        && Number(style.opacity || 1) > 0
+        && box.width > 0
+        && box.height > 0;
+    };
+    return Array.from(element.querySelectorAll(
+      '[aria-haspopup], [aria-label], [title], button, [role="button"], [role="menuitem"]',
+    )).map((node) => {
+      const box = node.getBoundingClientRect();
+      return {
+        tag: node.tagName.toLowerCase(),
+        role: node.getAttribute('role') || '',
+        hasPopup: node.getAttribute('aria-haspopup') || '',
+        expanded: node.getAttribute('aria-expanded') || '',
+        aria: clean(node.getAttribute('aria-label') || ''),
+        title: clean(node.getAttribute('title') || ''),
+        text: clean(node.innerText || node.textContent || '').slice(0, 120),
+        visible: visible(node),
+        box: [Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)],
+        className: String(node.className || '').slice(0, 160),
+      };
+    }).filter((entry) => (
+      entry.hasPopup
+      || /редакт|измен|удал|копир|ответ|закреп|пересл|выбрать|действ|ещ|меню|опци/i.test(
+        `${entry.aria} ${entry.title} ${entry.text} ${entry.className}`,
+      )
+    )).slice(0, 100);
+  });
+}
+
+async function overlaySnapshot(page) {
   return page.evaluate(() => {
     const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
     const visible = (element) => {
@@ -133,7 +170,7 @@ async function visibleMenuSnapshot(page) {
         && box.height > 0;
     };
     return Array.from(document.querySelectorAll(
-      '[role="menuitem"], [role="menu"], [role="dialog"], [data-radix-popper-content-wrapper], button, [role="button"]',
+      '[role="menuitem"], [role="menu"], [role="dialog"], [data-radix-popper-content-wrapper], button, [role="button"], [aria-haspopup]',
     ))
       .filter(visible)
       .map((element) => {
@@ -141,16 +178,24 @@ async function visibleMenuSnapshot(page) {
         return {
           tag: element.tagName.toLowerCase(),
           role: element.getAttribute('role') || '',
+          hasPopup: element.getAttribute('aria-haspopup') || '',
+          expanded: element.getAttribute('aria-expanded') || '',
           aria: clean(element.getAttribute('aria-label') || ''),
           title: clean(element.getAttribute('title') || ''),
-          text: clean(element.innerText || element.textContent || '').slice(0, 300),
+          text: clean(element.innerText || element.textContent || '').slice(0, 500),
           box: [Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)],
+          className: String(element.className || '').slice(0, 180),
         };
       })
-      .filter((entry) => entry.box[0] > 450 && /редакт|измен|удал|копир|ответ|закреп|пересл|выбрать|ещ|меню/i.test(
-        `${entry.aria} ${entry.title} ${entry.text}`,
+      .filter((entry) => entry.box[0] > 450 && (
+        entry.role === 'dialog'
+        || entry.role === 'menu'
+        || entry.role === 'menuitem'
+        || /редакт|измен|удал|копир|ответ|закреп|пересл|выбрать|действ|ещ|меню|опци|сохран|отмен/i.test(
+          `${entry.aria} ${entry.title} ${entry.text} ${entry.className}`,
+        )
       ))
-      .slice(0, 80);
+      .slice(0, 120);
   });
 }
 
@@ -191,33 +236,21 @@ try {
   await runtime.page.waitForTimeout(500);
 
   const structure = await inspectStructure(item);
-  const gestures = [
-    async () => item.click({ button: 'right' }),
-    async () => {
-      const box = await item.boundingBox();
-      if (!box) throw new Error('MAX probe target has no bounding box.');
-      await runtime.page.mouse.click(
-        box.x + Math.min(box.width - 20, Math.max(20, box.width * 0.75)),
-        box.y + Math.min(box.height - 20, Math.max(20, box.height * 0.5)),
-        { button: 'right' },
-      );
-    },
-    async () => {
-      await item.focus();
-      await runtime.page.keyboard.press('Shift+F10');
-    },
-    async () => item.dispatchEvent('contextmenu', { bubbles: true, button: 2, buttons: 2 }),
-  ];
+  const controlsBefore = await elementControlsSnapshot(item);
+  await item.hover().catch(() => {});
+  await runtime.page.waitForTimeout(800);
+  const controlsAfterHover = await elementControlsSnapshot(item);
+  const overlayAfterHover = await overlaySnapshot(runtime.page);
 
-  let menu = [];
-  for (const gesture of gestures) {
+  const dialogTarget = item.locator('[aria-haspopup="dialog"]').last();
+  let overlayAfterClick = [];
+  if (await dialogTarget.count()) {
+    await dialogTarget.click({ timeout: 5_000 }).catch(() => {});
+    await runtime.page.waitForTimeout(900);
+    overlayAfterClick = await overlaySnapshot(runtime.page);
     await runtime.page.keyboard.press('Escape').catch(() => {});
-    await gesture().catch(() => {});
-    await runtime.page.waitForTimeout(700);
-    menu = await visibleMenuSnapshot(runtime.page);
-    if (menu.length) break;
+    await runtime.page.waitForTimeout(300);
   }
-  await runtime.page.keyboard.press('Escape').catch(() => {});
 
   console.log(`MAX_FORMAT_PROBE_DESTINATION=${resolved.title}`);
   console.log(`MAX_FORMAT_PROBE_CANDIDATES=${JSON.stringify(match.candidates.map((candidate) => ({
@@ -227,7 +260,10 @@ try {
     box: candidate.box.map((value) => Math.round(value)),
   })))}`);
   console.log(`MAX_FORMAT_PROBE_STRUCTURE=${JSON.stringify(structure)}`);
-  console.log(`MAX_FORMAT_PROBE_MENU=${JSON.stringify(menu)}`);
+  console.log(`MAX_FORMAT_PROBE_CONTROLS_BEFORE=${JSON.stringify(controlsBefore)}`);
+  console.log(`MAX_FORMAT_PROBE_CONTROLS_HOVER=${JSON.stringify(controlsAfterHover)}`);
+  console.log(`MAX_FORMAT_PROBE_OVERLAY_HOVER=${JSON.stringify(overlayAfterHover)}`);
+  console.log(`MAX_FORMAT_PROBE_OVERLAY_CLICK=${JSON.stringify(overlayAfterClick)}`);
 } finally {
   if (runtime?.context) await runtime.context.close().catch(() => {});
   if (runtime?.browser) await runtime.browser.close().catch(() => {});
