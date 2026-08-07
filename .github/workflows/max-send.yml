@@ -59,6 +59,7 @@ jobs:
       - name: Validate source syntax
         run: |
           npm run max:session:syntax
+          node --check scripts/max-wait-before-verify.mjs
           python -m py_compile scripts/generate_amber_combine_poster.py
 
       - name: Install dependencies
@@ -72,6 +73,9 @@ jobs:
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+
+      - name: Wait for requested final-verification instant
+        run: node scripts/max-wait-before-verify.mjs
 
       - name: Execute recipient-invisible staged MAX command
         id: max_send
@@ -98,14 +102,21 @@ jobs:
           if (result.destination?.title) console.log(`MAX_RESULT_DESTINATION=${result.destination.title}`);
           if (result.staging?.stageAt) console.log(`MAX_RESULT_STAGE_AT=${result.staging.stageAt}`);
 
-          const verification = result.verification || result.staging?.verification || null;
+          const verification = result.verification?.scheduled
+            || result.verification?.final
+            || result.staging?.verification
+            || result.verification
+            || null;
           if (verification) {
             console.log(`MAX_RESULT_VERIFY found=${Boolean(verification.found)} ambiguous=${Boolean(verification.ambiguous)} count=${Number(verification.count || 0)} expected_time=${verification.expectedTime || 'none'}`);
             if (verification.queue) {
               const diagnostics = Array.isArray(verification.queue.diagnostics)
                 ? verification.queue.diagnostics.slice(0, 20)
-                : [];
+                : verification.queue.diagnostics || [];
               console.log(`MAX_RESULT_QUEUE absent=${Boolean(verification.queue.absent)} already_open=${Boolean(verification.queue.alreadyOpen)} title=${verification.queue.title || 'none'} diagnostics=${JSON.stringify(diagnostics)}`);
+            }
+            if (verification.diagnostics) {
+              console.log(`MAX_RESULT_DIAGNOSTICS=${JSON.stringify(verification.diagnostics)}`);
             }
             const matches = Array.isArray(verification.matches)
               ? verification.matches.map((match) => ({
