@@ -53,6 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile scripts/social_registry.py scripts/telegram_publish.py
+          node --check scripts/social-generate-test-image.mjs
           python - <<'PY'
           import json
           from pathlib import Path
@@ -84,7 +85,7 @@ jobs:
           echo "path=${command_path}" >> "${GITHUB_OUTPUT}"
 
       - name: Generate deterministic private test image
-        run: node scripts/max-generate-test-image.mjs generated/social-test-post.png
+        run: npm run social:test-image
 
       - name: Publish or verify Telegram command
         id: publish
