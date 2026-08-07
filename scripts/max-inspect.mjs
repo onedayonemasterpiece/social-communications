@@ -22,6 +22,7 @@ const result = {
   chat: null,
   controls: null,
   rightClick: null,
+  scheduleDialog: null,
 };
 
 let runtime;
@@ -48,6 +49,31 @@ try {
   };
   await captureEvidence(runtime.page, artifactDir, '02-send-context-menu');
 
+  await runtime.page.getByRole('menuitem', { name: 'Отправить позже', exact: true }).click();
+  await runtime.page.waitForTimeout(800);
+  result.scheduleDialog = {
+    overlayText: await visibleOverlayText(runtime.page),
+    fields: await runtime.page.evaluate(() => {
+      const visible = (element) => {
+        const style = getComputedStyle(element);
+        const box = element.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && box.width > 0 && box.height > 0;
+      };
+      return Array.from(document.querySelectorAll('input, textarea, select, [contenteditable="true"], [role="spinbutton"]'))
+        .filter(visible)
+        .map((element) => ({
+          tag: element.tagName.toLowerCase(),
+          type: element.getAttribute('type') || '',
+          role: element.getAttribute('role') || '',
+          aria: element.getAttribute('aria-label') || '',
+          placeholder: element.getAttribute('placeholder') || '',
+          value: 'value' in element ? String(element.value || '') : String(element.textContent || ''),
+        }));
+    }),
+  };
+  await captureEvidence(runtime.page, artifactDir, '03-schedule-dialog');
+
+  await runtime.page.keyboard.press('Escape').catch(() => {});
   await runtime.page.keyboard.press('Escape').catch(() => {});
   await clearComposer(composer);
   result.status = 'pass';
