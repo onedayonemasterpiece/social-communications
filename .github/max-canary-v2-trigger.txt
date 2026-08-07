@@ -1,3 +1,3 @@
 send=Привет мир
-requested_at=2026-08-07T05:30:00Z
-attempt=max-session-only
+requested_at=2026-08-07T05:45:00Z
+attempt=cookie-compat
