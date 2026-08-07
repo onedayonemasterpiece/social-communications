@@ -1,0 +1,101 @@
+name: MAX published-post formatting repair
+run-name: MAX formatting repair — ${{ github.event_name }}
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/max-repair-command.json
+  workflow_dispatch:
+
+concurrency:
+  group: max-published-post-formatting-repair
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MAX_SESSION: ${{ secrets.MAX_SESSION }}
+      MAX_COMMAND_FILE: .github/max-repair-command.json
+      MAX_ARTIFACT_DIR: artifacts/max-repair
+    steps:
+      - name: Verify MAX session secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${MAX_SESSION:-}" ]] || { echo "::error::Repository secret MAX_SESSION is absent."; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate repair source syntax
+        run: |
+          node --check scripts/max-command-contract.mjs
+          node --check scripts/max-composer.mjs
+          node --check scripts/max-repair-published-post.mjs
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Export public MAX destination registry
+        shell: bash
+        run: |
+          node - <<'NODE' >> "$GITHUB_ENV"
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync('config/social-destinations.public.json', 'utf8'));
+          const entries = (payload.destinations || [])
+            .map((entry) => ({
+              key: entry.key,
+              title: entry.platforms?.max?.title,
+              kind: entry.platforms?.max?.type,
+              aliases: entry.aliases || [],
+            }))
+            .filter((entry) => entry.key && entry.title);
+          console.log(`MAX_DESTINATIONS_JSON=${JSON.stringify(entries)}`);
+          NODE
+
+      - name: Repair exact published MAX post
+        id: repair
+        continue-on-error: true
+        run: node scripts/max-repair-published-post.mjs
+
+      - name: Report sanitized repair result
+        if: always()
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = 'artifacts/max-repair/result.json';
+          if (!fs.existsSync(path)) {
+            console.log('MAX_FORMAT_REPAIR_RESULT=absent');
+            process.exit(0);
+          }
+          const result = JSON.parse(fs.readFileSync(path, 'utf8'));
+          console.log(`MAX_FORMAT_REPAIR_RESULT=${result.status || 'unknown'} commit_point=${result.commitPointPassed ? 'passed' : 'not-passed'} destination=${result.destination || 'unknown'}`);
+          if (result.final) console.log(`MAX_FORMAT_REPAIR_FINAL=${JSON.stringify(result.final)}`);
+          if (result.error) console.log(`MAX_FORMAT_REPAIR_ERROR=${String(result.error).replace(/\s+/g, ' ').slice(0, 800)}`);
+          NODE
+
+      - name: Upload screenshots and DOM evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: max-format-repair-${{ github.run_id }}
+          path: artifacts/max-repair
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Fail when repair did not complete
+        if: steps.repair.outcome == 'failure'
+        run: exit 1
