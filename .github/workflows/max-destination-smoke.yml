@@ -20,7 +20,7 @@ on:
 
 concurrency:
   group: max-registered-destinations-smoke
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -28,7 +28,7 @@ permissions:
 jobs:
   resolve:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       MAX_SESSION: ${{ secrets.MAX_SESSION }}
       MAX_DESTINATIONS_JSON: ${{ secrets.MAX_DESTINATIONS_JSON }}
@@ -52,8 +52,8 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Chromium browser
+        run: npx playwright install chromium
 
       - name: Resolve registered destinations without composing or sending
         run: npm run max:destination:smoke
