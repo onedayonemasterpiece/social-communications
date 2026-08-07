@@ -45,18 +45,30 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
+      - name: Install poster dependency
+        run: python -m pip install --disable-pip-version-check 'Pillow==11.3.0'
+
       - name: Validate source syntax
-        run: npm run max:session:syntax
+        run: |
+          npm run max:session:syntax
+          python -m py_compile scripts/generate_amber_combine_poster.py
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
       - name: Generate private deterministic test image
         run: npm run max:test-image
+
+      - name: Generate approved amber-combine poster
+        run: python scripts/generate_amber_combine_poster.py generated/amber-combine-poster.png
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
