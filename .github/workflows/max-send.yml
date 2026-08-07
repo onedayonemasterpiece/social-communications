@@ -1,0 +1,73 @@
+name: MAX deterministic sender
+run-name: MAX sender — ${{ github.event_name }}
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/max-live-command.json
+  workflow_dispatch:
+    inputs:
+      command_json:
+        description: Full version-1 MAX command JSON
+        required: true
+        type: string
+      capture_evidence:
+        description: Upload cropped one-day screenshots and DOM evidence
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: max-deterministic-sender
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MAX_SESSION: ${{ secrets.MAX_SESSION }}
+      MAX_COMMAND_JSON: ${{ github.event.inputs.command_json }}
+      MAX_COMMAND_FILE: .github/max-live-command.json
+      MAX_CAPTURE_EVIDENCE: ${{ (github.event_name == 'push' || inputs.capture_evidence == true) && '1' || '0' }}
+      MAX_ARTIFACT_DIR: artifacts/max-send
+    steps:
+      - name: Verify session secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${MAX_SESSION:-}" ]] || { echo "::error::Repository secret MAX_SESSION is absent."; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate source syntax
+        run: npm run max:session:syntax
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Generate private deterministic test image
+        run: npm run max:test-image
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Execute deterministic MAX command
+        run: npm run max:send
+
+      - name: Upload short-lived cropped evidence
+        if: always() && env.MAX_CAPTURE_EVIDENCE == '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: max-send-${{ github.run_id }}
+          path: artifacts/max-send
+          if-no-files-found: error
+          retention-days: 1
