@@ -246,7 +246,9 @@ try {
     name: error?.name || 'Error',
     code: errorCode(error),
     message: String(error?.message || error),
+    candidates: Array.isArray(error?.candidates) ? error.candidates.slice(0, 8) : undefined,
   };
+  if (result.error.candidates === undefined) delete result.error.candidates;
   result.completedAt = new Date().toISOString();
 
   if (runtime?.page && activeComposer && !result.commitPointPassed) {
