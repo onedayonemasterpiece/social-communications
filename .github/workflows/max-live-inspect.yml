@@ -1,0 +1,43 @@
+name: MAX live UI inspect
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/max-live-inspect-trigger.txt
+  workflow_dispatch:
+    inputs:
+      chat_title:
+        description: Exact MAX chat title
+        required: false
+        default: Тестовая группа
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MAX_SESSION: ${{ secrets.MAX_SESSION }}
+      MAX_CHAT_TITLE: ${{ github.event.inputs.chat_title || 'Тестовая группа' }}
+      MAX_ARTIFACT_DIR: artifacts/max-inspect
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Inspect target chat controls without sending
+        run: node scripts/max-inspect.mjs
+      - name: Upload short-lived cropped evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: max-live-inspect-${{ github.run_id }}
+          path: artifacts/max-inspect
+          if-no-files-found: error
+          retention-days: 1
