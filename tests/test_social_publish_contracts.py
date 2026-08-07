@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -56,6 +58,35 @@ class TelegramBundleTests(unittest.TestCase):
         payload = {"session": "session-value", "device_model": "GitHub Actions"}
         with self.assertRaisesRegex(telegram_publish.TelegramPublishError, "TG_API_ID"):
             telegram_publish._load_auth_bundle(self._encoded(payload))
+
+
+class TelegramScheduledHistoryTests(unittest.TestCase):
+    def test_reads_scheduled_queue_through_raw_rpc(self) -> None:
+        expected_message = SimpleNamespace(id=77, message="marker")
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.request = None
+
+            async def get_input_entity(self, entity):
+                self.entity = entity
+                return "input-peer"
+
+            async def __call__(self, request):
+                self.request = request
+                return SimpleNamespace(messages=[expected_message])
+
+        client = FakeClient()
+        messages = asyncio.run(
+            telegram_publish._scheduled_messages(client, SimpleNamespace())
+        )
+
+        self.assertEqual(messages, [expected_message])
+        self.assertIsInstance(
+            client.request,
+            telegram_publish.functions.messages.GetScheduledHistoryRequest,
+        )
+        self.assertEqual(client.request.hash, 0)
 
 
 class CommandContractTests(unittest.TestCase):

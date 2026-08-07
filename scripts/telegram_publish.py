@@ -22,17 +22,19 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
 
-from telethon import TelegramClient
+from telethon import TelegramClient, functions
 from telethon.errors import AuthKeyDuplicatedError
 from telethon.sessions import StringSession
-from telethon.tl.types import Channel
+from telethon.tl.types import Channel, MessageMediaPhoto
 
 from social_registry import DestinationRegistry
 
 MIN_SCHEDULE_LEAD_SECONDS = 60
 MAX_SCHEDULED_SCAN = 500
+POST_COMMIT_VERIFY_ATTEMPTS = 8
+POST_COMMIT_VERIFY_DELAY_SECONDS = 1.0
 
 
 class TelegramPublishError(RuntimeError):
@@ -322,21 +324,31 @@ async def _resolve_destination(client: TelegramClient, config: dict[str, Any]) -
     return entity
 
 
-async def _scheduled_messages(client: TelegramClient, entity: Channel) -> AsyncIterator[Any]:
-    count = 0
-    async for message in client.iter_messages(entity, scheduled=True, limit=MAX_SCHEDULED_SCAN):
-        yield message
-        count += 1
-        if count >= MAX_SCHEDULED_SCAN:
-            break
+async def _scheduled_messages(client: TelegramClient, entity: Channel) -> list[Any]:
+    """Read the server-side scheduled queue through the underlying MTProto RPC.
+
+    Telethon's high-level ``iter_messages(..., scheduled=True)`` has had
+    version-specific pagination regressions. The Telegram RPC returns the whole
+    scheduled queue for a peer and is the authoritative source for idempotency.
+    """
+    input_peer = await client.get_input_entity(entity)
+    result = await client(
+        functions.messages.GetScheduledHistoryRequest(peer=input_peer, hash=0)
+    )
+    messages = list(getattr(result, "messages", []) or [])
+    if len(messages) > MAX_SCHEDULED_SCAN:
+        raise TelegramPublishError(
+            f"scheduled Telegram queue exceeds safety limit: {len(messages)}"
+        )
+    return messages
 
 
 async def _find_scheduled(client: TelegramClient, entity: Channel, marker: str) -> list[Any]:
-    matches: list[Any] = []
-    async for message in _scheduled_messages(client, entity):
-        if marker in _clean_text(getattr(message, "message", "")):
-            matches.append(message)
-    return matches
+    return [
+        message
+        for message in await _scheduled_messages(client, entity)
+        if marker in _clean_text(getattr(message, "message", ""))
+    ]
 
 
 def _expected_epoch(command: Command) -> int:
@@ -370,7 +382,8 @@ def _verify_message(message: Any, command: Command, expected_epoch: int) -> dict
         raise TelegramPublishError(
             f"matching scheduled Telegram message has wrong time: expected={expected_epoch} actual={observed_epoch}"
         )
-    if getattr(message, "photo", None) is None:
+    media = getattr(message, "media", None)
+    if getattr(message, "photo", None) is None and not isinstance(media, MessageMediaPhoto):
         raise TelegramPublishError("matching scheduled Telegram message has no photo")
     return {"message_id": message_id, "scheduled_epoch": observed_epoch}
 
@@ -432,7 +445,13 @@ async def execute(command: Command, bundle: TelegramAuthBundle) -> dict[str, Any
                 "image": image,
             }
 
-        matches = await _find_scheduled(client, entity, command.marker)
+        matches: list[Any] = []
+        for attempt in range(POST_COMMIT_VERIFY_ATTEMPTS):
+            matches = await _find_scheduled(client, entity, command.marker)
+            if matches:
+                break
+            if attempt + 1 < POST_COMMIT_VERIFY_ATTEMPTS:
+                await asyncio.sleep(POST_COMMIT_VERIFY_DELAY_SECONDS)
         if len(matches) != 1:
             raise TelegramPublishError(
                 f"post-commit verification expected exactly one scheduled message, found {len(matches)}"
