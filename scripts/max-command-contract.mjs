@@ -7,6 +7,15 @@ const DEFAULT_COMMAND_FILE = '.github/max-live-command.json';
 const DELIVERY_MODES = new Set(['send_now', 'schedule_at', 'stage_only']);
 const CONTENT_TYPES = new Set(['text', 'rich_post']);
 
+function normalizeMultilineText(value) {
+  return String(value ?? '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\t ]+\n/g, '\n')
+    .replace(/\n[\t ]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function normalizeLinks(links) {
   if (!Array.isArray(links)) return [];
   if (links.length > 10) throw new Error('MAX command supports at most 10 formatted links.');
@@ -35,8 +44,8 @@ function normalizeDestination(value = {}) {
 function normalizeContent(value = {}) {
   const type = normalizeText(value.type || 'text');
   if (!CONTENT_TYPES.has(type)) throw new Error(`Unsupported MAX content type: ${type}.`);
-  const text = normalizeText(value.text);
-  if (!text) throw new Error('MAX command requires non-empty content.text.');
+  const text = normalizeMultilineText(value.text);
+  if (!normalizeText(text)) throw new Error('MAX command requires non-empty content.text.');
   if (text.length > 4_000) throw new Error('MAX command text exceeds the 4000-character safety limit.');
 
   if (type === 'text') return { type, text, links: [] };
