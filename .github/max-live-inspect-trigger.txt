@@ -1,3 +1,3 @@
-requested_at=2026-08-07T06:25:00Z
+requested_at=2026-08-07T06:32:00Z
 chat=Тестовая группа
-mode=inspect-calendar-controls-and-filechooser
+mode=dry-run-schedule-11-00-and-photo-chooser
