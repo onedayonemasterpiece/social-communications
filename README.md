@@ -10,7 +10,7 @@ Workflow `.github/workflows/max-web-canary-v2.yml` использует Playwrig
 
 ## Контракт сохранённой сессии
 
-Repository secret `max_session` должен содержать воспроизводимое состояние авторизованного браузера:
+Workflow читает только repository secret `MAX_SESSION`. Он должен содержать воспроизводимое состояние авторизованного браузера:
 
 - cookies, включая HttpOnly при захвате Playwright;
 - localStorage;
@@ -18,7 +18,7 @@ Repository secret `max_session` должен содержать воспроиз
 - sessionStorage;
 - origin `https://web.max.ru`.
 
-Предпочтительный формат — `max-session-v2`, сжатый в строку с префиксом `MAX_SESSION_V2_GZIP_BASE64=`. Также поддерживается полный Playwright `storageState` JSON.
+Предпочтительный формат — `max-session-v2`, сжатый в строку с префиксом `MAX_SESSION_V2_GZIP_BASE64=`. Префикс является частью значения `MAX_SESSION`, а не отдельным именем GitHub Secret. Также поддерживается полный Playwright `storageState` JSON.
 
 Старый снимок вида `{"cookies": [], "local_storage": ..., "session_storage": ...}` без cookies и IndexedDB не считается авторизованной сессией: он сохраняет настройки интерфейса, но не даёт воспроизводимого входа. Canary отклоняет такой снимок до запуска Chromium.
 
@@ -27,7 +27,7 @@ Repository secret `max_session` должен содержать воспроиз
 1. Открыть авторизованную вкладку `https://web.max.ru/` в Chrome или Edge.
 2. Открыть DevTools → Sources → Snippets.
 3. Создать snippet, вставить содержимое `scripts/max-session-export-console.js` и запустить.
-4. Скрипт скачает `max_session-*.txt` и резервный JSON. Полное содержимое `.txt` сохранить в repository secret `max_session`.
+4. Скрипт скачает `max_session-*.txt` и резервный JSON. Полное содержимое `.txt` сохранить в repository secret `MAX_SESSION`.
 
 Экспорт включает IndexedDB, сжимает результат и сообщает, помещается ли он в лимит GitHub repository secret. Значения storage в консоль не печатаются.
 
