@@ -1,107 +1,250 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/onedayonemasterpiece/social-communications/contracts/max-command.schema.json",
-  "title": "MAX deterministic command",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["version", "requestId", "chat", "action", "text"],
-  "properties": {
-    "version": {
-      "const": 1
+  "title": "MAX safe staged command",
+  "description": "Version 2 is the canonical contract. Version 1 remains accepted and is normalized to the safe staged path.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/v2"
     },
+    {
+      "$ref": "#/$defs/v1"
+    }
+  ],
+  "$defs": {
     "requestId": {
       "type": "string",
       "minLength": 1,
       "maxLength": 200
     },
-    "chat": {
+    "httpsLink": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["title"],
+      "required": ["text", "url"],
       "properties": {
-        "title": {
+        "text": {
           "type": "string",
           "minLength": 1,
           "maxLength": 300
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
         }
       }
     },
-    "action": {
-      "enum": ["text", "schedule_text", "rich_post"]
-    },
-    "text": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 4000
-    },
-    "scheduleAt": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "timeZone": {
-      "type": "string",
-      "default": "Europe/Kaliningrad"
-    },
-    "verifyOnly": {
-      "type": "boolean",
-      "default": false
-    },
-    "image": {
+    "destination": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path"],
       "properties": {
-        "path": {
+        "key": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Stable key from the private MAX_DESTINATIONS_JSON registry."
+        },
+        "exactTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300,
+          "description": "Possibly incomplete or misspelled destination hint. It is accepted only when deterministic resolution is unambiguous."
+        },
+        "kind": {
+          "enum": ["chat", "group", "channel", "bot", "person"]
+        }
+      },
+      "anyOf": [
+        { "required": ["key"] },
+        { "required": ["exactTitle"] },
+        { "required": ["query"] }
+      ]
+    },
+    "textContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text"],
+      "properties": {
+        "type": { "const": "text" },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
         }
       }
     },
-    "links": {
-      "type": "array",
-      "minItems": 1,
-      "maxItems": 10,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["text", "url"],
-        "properties": {
-          "text": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 300
-          },
-          "url": {
-            "type": "string",
-            "format": "uri",
-            "pattern": "^https://"
+    "richContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text", "image", "links"],
+      "properties": {
+        "type": { "const": "rich_post" },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path"],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            }
           }
+        },
+        "links": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": { "$ref": "#/$defs/httpsLink" }
         }
       }
-    }
-  },
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "action": { "const": "schedule_text" }
+    },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "enum": ["send_now", "schedule_at", "stage_only"]
         },
-        "required": ["action"]
+        "scheduleAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "stageAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Optional parking timestamp for the native scheduled-message draft."
+        },
+        "timeZone": {
+          "type": "string",
+          "default": "Europe/Kaliningrad"
+        },
+        "recipientInvisiblePreparation": {
+          "const": true,
+          "default": true
+        },
+        "reuseExistingStage": {
+          "type": "boolean",
+          "default": true
+        }
       },
-      "then": {
-        "required": ["scheduleAt"]
+      "allOf": [
+        {
+          "if": {
+            "properties": { "mode": { "const": "schedule_at" } },
+            "required": ["mode"]
+          },
+          "then": { "required": ["scheduleAt"] }
+        }
+      ]
+    },
+    "v2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "requestId", "destination", "content", "delivery"],
+      "properties": {
+        "version": { "const": 2 },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "destination": { "$ref": "#/$defs/destination" },
+        "content": {
+          "oneOf": [
+            { "$ref": "#/$defs/textContent" },
+            { "$ref": "#/$defs/richContent" }
+          ]
+        },
+        "delivery": { "$ref": "#/$defs/delivery" },
+        "verifyOnly": {
+          "type": "boolean",
+          "default": false
+        }
       }
     },
-    {
-      "if": {
-        "properties": {
-          "action": { "const": "rich_post" }
+    "v1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "requestId", "chat", "action", "text"],
+      "properties": {
+        "version": { "const": 1 },
+        "requestId": { "$ref": "#/$defs/requestId" },
+        "chat": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["title"],
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            },
+            "kind": {
+              "enum": ["chat", "group", "channel", "bot", "person"]
+            }
+          }
         },
-        "required": ["action"]
+        "action": {
+          "enum": ["text", "schedule_text", "rich_post"]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "scheduleAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "timeZone": {
+          "type": "string",
+          "default": "Europe/Kaliningrad"
+        },
+        "verifyOnly": {
+          "type": "boolean",
+          "default": false
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path"],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "links": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": { "$ref": "#/$defs/httpsLink" }
+        }
       },
-      "then": {
-        "required": ["image", "links"]
-      }
+      "allOf": [
+        {
+          "if": {
+            "properties": { "action": { "const": "schedule_text" } },
+            "required": ["action"]
+          },
+          "then": { "required": ["scheduleAt"] }
+        },
+        {
+          "if": {
+            "properties": { "action": { "const": "rich_post" } },
+            "required": ["action"]
+          },
+          "then": { "required": ["image", "links"] }
+        }
+      ]
     }
-  ]
+  }
 }
