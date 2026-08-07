@@ -1,3 +1,3 @@
-requested_at=2026-08-07T07:15:00Z
-artifact_ids=8985383244 8985436556
-reason=MAX staged-message menu inspection evidence analyzed
+requested_at=2026-08-07T07:51:00Z
+artifact_ids=8985689742 8985782975 8985868866 8985925585 8986025731 8986090032 8986197898 8986268699
+reason=MAX fuzzy routing and recipient-invisible staged delivery evidence analyzed
