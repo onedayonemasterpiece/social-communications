@@ -83,20 +83,6 @@ async function matchingCandidates(page, command) {
   return candidates;
 }
 
-async function structure(item) {
-  return item.evaluate((element) => {
-    const rawText = String(element.innerText || element.textContent || '');
-    const lineBreakRuns = Array.from(rawText.matchAll(/\n+/g)).map((match) => match[0].length);
-    const box = element.getBoundingClientRect();
-    return {
-      lineBreakRuns,
-      doubleBreakCount: lineBreakRuns.filter((length) => length >= 2).length,
-      box: [Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)],
-      htmlPrefix: String(element.innerHTML || '').slice(0, 5_000),
-    };
-  });
-}
-
 async function visibleOverlays(page) {
   return page.evaluate(() => {
     const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
@@ -112,23 +98,30 @@ async function visibleOverlays(page) {
         && box.top < innerHeight;
     };
     return Array.from(document.querySelectorAll(
-      '[role="dialog"], [role="menu"], [role="menuitem"], [data-radix-popper-content-wrapper], .popover, .actionsMenu',
+      '[role="dialog"], [role="menu"], [role="menuitem"], [data-radix-popper-content-wrapper], .popover, .actionsMenu, button',
     )).filter(visible).map((element) => {
       const box = element.getBoundingClientRect();
       return {
         tag: element.tagName.toLowerCase(),
         role: element.getAttribute('role') || '',
         aria: clean(element.getAttribute('aria-label') || ''),
-        text: clean(element.innerText || element.textContent || '').slice(0, 1_000),
+        text: clean(element.innerText || element.textContent || '').slice(0, 1_200),
         box: [Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)],
         className: String(element.className || '').slice(0, 220),
       };
-    }).slice(0, 120);
+    }).filter((entry) => (
+      entry.role === 'dialog'
+      || entry.role === 'menu'
+      || entry.role === 'menuitem'
+      || /редакт|измен|удал|копир|ответ|закреп|пересл|выбрать|действ|ещ|меню|опци|сохран|отмен|реакц/i.test(
+        `${entry.aria} ${entry.text} ${entry.className}`,
+      )
+    )).slice(0, 160);
   });
 }
 
 const command = await loadMaxCommand();
-if (command.content.type !== 'rich_post') throw new Error('MAX message action probe requires rich_post.');
+if (command.content.type !== 'rich_post') throw new Error('MAX edit-menu probe requires rich_post.');
 const destination = await destinationConfig(command);
 let runtime;
 
@@ -158,29 +151,26 @@ try {
   const item = runtime.page.locator('[role="listitem"], [role="presentation"]').nth(selected.index);
   await item.evaluate((element) => element.scrollIntoView({ block: 'start', inline: 'nearest' }));
   await runtime.page.waitForTimeout(900);
-  await item.hover({ position: { x: 250, y: 24 } }).catch(() => item.hover());
-  await runtime.page.waitForTimeout(900);
 
-  const actionButton = item.getByRole('button', { name: 'Действия с сообщением', exact: true });
-  const buttonCount = await actionButton.count();
-  const buttonVisible = buttonCount ? await actionButton.isVisible().catch(() => false) : false;
-  const buttonBox = buttonCount ? await actionButton.boundingBox().catch(() => null) : null;
-  const before = await visibleOverlays(runtime.page);
-
-  if (!buttonCount || !buttonVisible) {
-    throw new Error(`MAX message action button was not visible; count=${buttonCount}, box=${JSON.stringify(buttonBox)}.`);
+  const message = item.locator('div.message[aria-haspopup="dialog"]').first();
+  const messageCount = await message.count();
+  const messageVisible = messageCount ? await message.isVisible().catch(() => false) : false;
+  const messageBox = messageCount ? await message.boundingBox().catch(() => null) : null;
+  if (!messageCount || !messageVisible) {
+    throw new Error(`MAX exact message was not clickable; count=${messageCount}, box=${JSON.stringify(messageBox)}.`);
   }
-  await actionButton.click({ timeout: 8_000 });
-  await runtime.page.waitForTimeout(1_000);
-  const after = await visibleOverlays(runtime.page);
-  const expanded = await actionButton.getAttribute('aria-expanded').catch(() => null);
 
-  console.log(`MAX_MESSAGE_ACTION_DESTINATION=${resolved.title}`);
-  console.log(`MAX_MESSAGE_ACTION_CANDIDATES=${JSON.stringify(candidates)}`);
-  console.log(`MAX_MESSAGE_ACTION_STRUCTURE=${JSON.stringify(await structure(item))}`);
-  console.log(`MAX_MESSAGE_ACTION_BUTTON=${JSON.stringify({ count: buttonCount, visible: buttonVisible, box: buttonBox, expanded })}`);
-  console.log(`MAX_MESSAGE_ACTION_OVERLAYS_BEFORE=${JSON.stringify(before)}`);
-  console.log(`MAX_MESSAGE_ACTION_OVERLAYS_AFTER=${JSON.stringify(after)}`);
+  const before = await visibleOverlays(runtime.page);
+  await message.click({ position: { x: 250, y: Math.min(250, Math.max(30, (messageBox?.height || 300) * 0.35)) } });
+  await runtime.page.waitForTimeout(1_100);
+  const after = await visibleOverlays(runtime.page);
+  const messageExpanded = await message.getAttribute('aria-expanded').catch(() => null);
+
+  console.log(`MAX_EDIT_MENU_DESTINATION=${resolved.title}`);
+  console.log(`MAX_EDIT_MENU_CANDIDATES=${JSON.stringify(candidates)}`);
+  console.log(`MAX_EDIT_MENU_TARGET=${JSON.stringify({ count: messageCount, visible: messageVisible, box: messageBox, expanded: messageExpanded })}`);
+  console.log(`MAX_EDIT_MENU_OVERLAYS_BEFORE=${JSON.stringify(before)}`);
+  console.log(`MAX_EDIT_MENU_OVERLAYS_AFTER=${JSON.stringify(after)}`);
   await runtime.page.keyboard.press('Escape').catch(() => {});
 } finally {
   if (runtime?.context) await runtime.context.close().catch(() => {});
