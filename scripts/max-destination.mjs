@@ -26,9 +26,7 @@ function jaccard(left, right) {
 function bigrams(value) {
   const normalized = ` ${canonical(value)} `;
   const result = [];
-  for (let index = 0; index < normalized.length - 1; index += 1) {
-    result.push(normalized.slice(index, index + 2));
-  }
+  for (let index = 0; index < normalized.length - 1; index += 1) result.push(normalized.slice(index, index + 2));
   return result;
 }
 
@@ -72,10 +70,17 @@ function similarity(query, title) {
   if (!q || !t) return 0;
   if (q === t) return 1;
   const lengthRatio = Math.min(q.length, t.length) / Math.max(q.length, t.length);
-  if (t.startsWith(q) || q.startsWith(t)) return 0.94 + 0.04 * lengthRatio;
-  if (t.includes(q) || q.includes(t)) return 0.89 + 0.06 * lengthRatio;
+
+  // A query that is a prefix of a longer candidate is strong evidence.
+  if (t.startsWith(q)) return 0.92 + 0.07 * lengthRatio;
+  // A shorter candidate that is merely a prefix of the user's longer phrase is weaker.
+  if (q.startsWith(t)) return 0.68 + 0.18 * lengthRatio;
+  if (t.includes(q)) return 0.86 + 0.10 * lengthRatio;
+  if (q.includes(t)) return 0.66 + 0.18 * lengthRatio;
+
   const editRatio = 1 - levenshtein(q, t) / Math.max(q.length, t.length);
-  return Math.max(0, Math.min(0.88, 0.46 * jaccard(q, t) + 0.39 * dice(q, t) + 0.15 * editRatio));
+  return Math.max(0, Math.min(0.91,
+    0.58 * dice(q, t) + 0.32 * editRatio + 0.10 * jaccard(q, t)));
 }
 
 function maskTitle(value) {
@@ -141,14 +146,18 @@ async function visibleCandidates(page) {
   const locator = page.locator('aside button, [role="presentation"] > button');
   const count = Math.min(await locator.count(), 600);
   const candidates = [];
+  const seen = new Set();
   for (let index = 0; index < count; index += 1) {
     const button = locator.nth(index);
     if (!(await button.isVisible().catch(() => false))) continue;
     const box = await button.boundingBox().catch(() => null);
-    if (!box || box.x > 470) continue;
+    if (!box || box.x > 470 || box.width < 250 || box.height < 48) continue;
     const lines = await buttonTitleLines(button);
     const title = normalizeText(lines[0]);
     if (!title) continue;
+    const key = `${canonical(title)}|${Math.round(box.x)}|${Math.round(box.y)}|${Math.round(box.width)}|${Math.round(box.height)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     candidates.push({ button, index, box, title, lines });
   }
   return candidates;
@@ -159,6 +168,13 @@ async function verifyOpenChatHeader(page, title) {
   const headerByAria = page.locator(`button[aria-label="${expectedAria.replace(/"/g, '\\"')}"]`);
   const headerByText = page.getByText(title, { exact: true });
   return Boolean(await firstVisible(headerByAria, 10) || await firstVisible(headerByText, 100));
+}
+
+function maskedCandidates(scored) {
+  return scored.slice(0, 8).map((item) => ({
+    titleHint: maskTitle(item.title),
+    score: Number(item.score.toFixed(4)),
+  }));
 }
 
 export async function resolveDestination(page, destination = {}) {
@@ -199,15 +215,15 @@ export async function resolveDestination(page, destination = {}) {
       throw Object.assign(new Error(`Expected one visible MAX destination named «${exactTitle}», found ${exact.length}.`), {
         name: 'DestinationResolutionError',
         code: exact.length ? 'exact-title-ambiguous' : 'exact-title-not-found',
-        candidates: scored.slice(0, 8).map((item) => ({ title: item.title, score: item.score })),
+        candidates: maskedCandidates(scored),
       });
     }
   } else {
     const top = scored[0];
     const second = scored[1];
-    const threshold = canonical(query).length < 4 ? 0.97 : 0.86;
+    const threshold = canonical(query).length < 4 ? 0.97 : 0.84;
     const margin = top ? top.score - (second?.score || 0) : 0;
-    const uniqueStrong = Boolean(top && top.score >= threshold && (scored.length === 1 || margin >= 0.12));
+    const uniqueStrong = Boolean(top && top.score >= threshold && (scored.length === 1 || margin >= 0.08));
     if (uniqueStrong) {
       chosen = top;
       strategy = 'deterministic-fuzzy';
@@ -215,7 +231,7 @@ export async function resolveDestination(page, destination = {}) {
       throw Object.assign(new Error(`MAX destination query «${query}» is not unambiguous enough for an automatic send.`), {
         name: 'DestinationResolutionError',
         code: scored.length ? 'fuzzy-ambiguous' : 'fuzzy-not-found',
-        candidates: scored.slice(0, 8).map((item) => ({ title: item.title, score: item.score })),
+        candidates: maskedCandidates(scored),
       });
     }
   }
@@ -253,7 +269,4 @@ export function destinationForLegacyChat(chat = {}) {
   };
 }
 
-export const destinationMatching = {
-  canonical,
-  similarity,
-};
+export const destinationMatching = { canonical, similarity };
