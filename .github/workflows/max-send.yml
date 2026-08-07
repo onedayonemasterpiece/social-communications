@@ -34,7 +34,7 @@ jobs:
       MAX_DESTINATIONS_JSON: ${{ secrets.MAX_DESTINATIONS_JSON }}
       MAX_COMMAND_JSON: ${{ github.event.inputs.command_json }}
       MAX_COMMAND_FILE: .github/max-live-command.json
-      MAX_CAPTURE_EVIDENCE: ${{ (github.event_name == 'push' || inputs.capture_evidence == true) && '1' || '0' }}
+      MAX_CAPTURE_EVIDENCE: ${{ inputs.capture_evidence == true && '1' || '0' }}
       MAX_ARTIFACT_DIR: artifacts/max-send
     steps:
       - name: Verify session secret
