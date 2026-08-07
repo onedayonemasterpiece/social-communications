@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "requestId": "max-safe-stage-send-now-text-20260807-3",
+  "requestId": "max-safe-stage-send-now-text-20260807-idempotency",
   "destination": {
     "query": "тестовая група",
     "kind": "group"
