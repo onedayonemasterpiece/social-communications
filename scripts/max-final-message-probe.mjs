@@ -6,6 +6,8 @@ import { launchAuthenticatedMax } from './max-runtime.mjs';
 import { normalizeText } from './max-ui.mjs';
 
 const REGISTRY_PATH = 'config/social-destinations.public.json';
+const ATTEMPTS = 5;
+const RETRY_DELAY_MS = 1_500;
 
 function canonicalUrl(value) {
   try {
@@ -13,6 +15,20 @@ function canonicalUrl(value) {
   } catch {
     return '';
   }
+}
+
+function requiredTextFragments(text) {
+  const normalized = normalizeText(text);
+  const sentences = normalized.match(/[^.!?]+[.!?]+|[^.!?]+$/gu)
+    ?.map((value) => normalizeText(value))
+    .filter((value) => value.length >= 20) || [];
+  if (!sentences.length) return [];
+  const last = sentences.length - 1;
+  const indexes = new Set([0, Math.floor(last / 3), Math.floor((last * 2) / 3), last]);
+  return [...indexes]
+    .sort((left, right) => left - right)
+    .map((index) => sentences[index])
+    .filter(Boolean);
 }
 
 async function destinationConfig(command) {
@@ -29,12 +45,7 @@ async function destinationConfig(command) {
 }
 
 async function matchingMessageCandidates(page, command) {
-  const expectedText = normalizeText(command.content.text);
-  const fragments = String(command.content.text)
-    .split(/\n{2,}/)
-    .map((value) => normalizeText(value))
-    .filter((value) => value.length >= 20)
-    .slice(0, 4);
+  const fragments = requiredTextFragments(command.content.text);
   const links = (command.content.links || []).map((link) => ({
     text: normalizeText(link.text),
     href: canonicalUrl(link.url),
@@ -78,12 +89,12 @@ async function matchingMessageCandidates(page, command) {
     }, { fragments, links }).catch(() => null);
 
     if (!details) continue;
-    const enoughFragments = details.fragmentMatches >= Math.min(3, Math.max(1, details.fragmentTotal));
-    if (!enoughFragments || !details.media || !details.linkMatches.every(Boolean)) continue;
+    if (details.fragmentMatches !== details.fragmentTotal) continue;
+    if (!details.media || !details.linkMatches.every(Boolean)) continue;
     candidates.push({ index, ...details });
   }
 
-  return { expectedText, fragments, links, candidates };
+  return { fragments, links, candidates };
 }
 
 async function inspectStructure(item) {
@@ -145,6 +156,9 @@ async function visibleMenuSnapshot(page) {
 
 const command = await loadMaxCommand();
 if (command.content.type !== 'rich_post') throw new Error('MAX final-message probe requires rich_post content.');
+if (requiredTextFragments(command.content.text).length < 3) {
+  throw new Error('MAX final-message probe requires at least three stable text fragments.');
+}
 
 const destination = await destinationConfig(command);
 let runtime;
@@ -155,10 +169,15 @@ try {
     exactTitle: destination.title,
     kind: destination.kind,
   });
-  await runtime.page.waitForTimeout(1_500);
 
-  const match = await matchingMessageCandidates(runtime.page, command);
-  if (!match.candidates.length) {
+  let match = null;
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
+    await runtime.page.waitForTimeout(attempt === 1 ? 1_500 : RETRY_DELAY_MS);
+    match = await matchingMessageCandidates(runtime.page, command);
+    if (match.candidates.length) break;
+    if (attempt < ATTEMPTS) await runtime.page.keyboard.press('End').catch(() => {});
+  }
+  if (!match?.candidates.length) {
     throw new Error(`MAX probe found no rich-post candidate in ${resolved.title}.`);
   }
 
@@ -166,7 +185,6 @@ try {
     .sort((left, right) => (
       right.depth - left.depth
       || (left.box[2] * left.box[3]) - (right.box[2] * right.box[3])
-      || right.fragmentMatches - left.fragmentMatches
     ))[0];
   const item = runtime.page.locator('[role="listitem"], [role="presentation"]').nth(selected.index);
   await item.scrollIntoViewIfNeeded().catch(() => {});
