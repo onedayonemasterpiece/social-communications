@@ -1,5 +1,5 @@
-name: MAX deterministic sender
-run-name: MAX sender — ${{ github.event_name }}
+name: MAX deterministic staged sender
+run-name: MAX staged sender — ${{ github.event_name }}
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       command_json:
-        description: Full version-1 MAX command JSON
+        description: Full version-2 MAX command JSON; legacy version 1 is normalized safely
         required: true
         type: string
       capture_evidence:
@@ -19,7 +19,7 @@ on:
         type: boolean
 
 concurrency:
-  group: max-deterministic-sender
+  group: max-deterministic-staged-sender
   cancel-in-progress: false
 
 permissions:
@@ -28,9 +28,10 @@ permissions:
 jobs:
   send:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       MAX_SESSION: ${{ secrets.MAX_SESSION }}
+      MAX_DESTINATIONS_JSON: ${{ secrets.MAX_DESTINATIONS_JSON }}
       MAX_COMMAND_JSON: ${{ github.event.inputs.command_json }}
       MAX_COMMAND_FILE: .github/max-live-command.json
       MAX_CAPTURE_EVIDENCE: ${{ (github.event_name == 'push' || inputs.capture_evidence == true) && '1' || '0' }}
@@ -60,7 +61,7 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Execute deterministic MAX command
+      - name: Execute recipient-invisible staged MAX command
         run: npm run max:send
 
       - name: Upload short-lived cropped evidence
