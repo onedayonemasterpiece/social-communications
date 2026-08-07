@@ -36,16 +36,32 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Apply MAX edit-submit selector compatibility
+      - name: Apply MAX edit compatibility
         run: |
           node - <<'NODE'
           const fs = require('node:fs');
           const file = 'scripts/max-repair-published-post.mjs';
-          const source = fs.readFileSync(file, 'utf8');
-          const needle = "    || await firstVisible(page.locator('button[aria-label*=\"Сохран\" i], button[title*=\"Сохран\" i]'), 100);";
-          const replacement = `${needle.slice(0, -1)}\n    || await firstVisible(page.locator('button[aria-label=\"Отправить сообщение\"]'), 100);`;
-          if (!source.includes(needle)) throw new Error('MAX repair save-selector patch point was not found.');
-          fs.writeFileSync(file, source.replace(needle, replacement));
+          let source = fs.readFileSync(file, 'utf8');
+
+          const saveNeedle = "    || await firstVisible(page.locator('button[aria-label*=\"Сохран\" i], button[title*=\"Сохран\" i]'), 100);";
+          const saveReplacement = `${saveNeedle.slice(0, -1)}\n    || await firstVisible(page.locator('button[aria-label=\"Отправить сообщение\"]'), 100);`;
+          if (!source.includes(saveNeedle)) throw new Error('MAX repair save-selector patch point was not found.');
+          source = source.replace(saveNeedle, saveReplacement);
+
+          const verifyNeedle = `  const finalHasParagraphs = finalStructure.doubleBreakCount >= expectedBlocks - 1
+            || finalStructure.blockChildren >= expectedBlocks
+            || finalStructure.paragraphs >= expectedBlocks;`;
+          const verifyReplacement = `  const finalVisualBlankLines = finalStructure.rawText
+            .split('\\n')
+            .filter((line) => line.includes('\\u2800')).length;
+          const finalHasParagraphs = finalVisualBlankLines >= expectedBlocks - 1
+            || finalStructure.doubleBreakCount >= expectedBlocks - 1
+            || finalStructure.blockChildren >= expectedBlocks
+            || finalStructure.paragraphs >= expectedBlocks;`;
+          if (!source.includes(verifyNeedle)) throw new Error('MAX repair final-verification patch point was not found.');
+          source = source.replace(verifyNeedle, verifyReplacement);
+
+          fs.writeFileSync(file, source);
           NODE
 
       - name: Validate repair source syntax
