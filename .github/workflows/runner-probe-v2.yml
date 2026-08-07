@@ -1,0 +1,24 @@
+name: Runner allocation probe v2
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/probe-trigger-v2.txt
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Confirm runner allocation
+        run: |
+          set -euo pipefail
+          echo "RUNNER_ALLOCATED=1"
+          echo "REPOSITORY_VISIBILITY=${{ github.event.repository.visibility }}"
+          uname -a
