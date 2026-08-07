@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "requestId": "sc-amber-combine-20260807-2245-final-diagnostic2:max",
+  "requestId": "sc-amber-combine-20260807-2245-semantic-final-verify:max",
   "destination": {
     "key": "polubit-kaliningrad-anonsy",
     "kind": "channel"
