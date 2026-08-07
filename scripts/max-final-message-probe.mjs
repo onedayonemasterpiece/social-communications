@@ -167,7 +167,9 @@ async function overlaySnapshot(page) {
         && style.visibility !== 'hidden'
         && Number(style.opacity || 1) > 0
         && box.width > 0
-        && box.height > 0;
+        && box.height > 0
+        && box.bottom > 0
+        && box.top < innerHeight;
     };
     return Array.from(document.querySelectorAll(
       '[role="menuitem"], [role="menu"], [role="dialog"], [data-radix-popper-content-wrapper], button, [role="button"], [aria-haspopup]',
@@ -187,7 +189,7 @@ async function overlaySnapshot(page) {
           className: String(element.className || '').slice(0, 180),
         };
       })
-      .filter((entry) => entry.box[0] > 450 && (
+      .filter((entry) => (
         entry.role === 'dialog'
         || entry.role === 'menu'
         || entry.role === 'menuitem'
@@ -236,20 +238,17 @@ try {
   await runtime.page.waitForTimeout(500);
 
   const structure = await inspectStructure(item);
-  const controlsBefore = await elementControlsSnapshot(item);
   await item.hover().catch(() => {});
   await runtime.page.waitForTimeout(800);
   const controlsAfterHover = await elementControlsSnapshot(item);
-  const overlayAfterHover = await overlaySnapshot(runtime.page);
 
-  const dialogTarget = item.locator('[aria-haspopup="dialog"]').last();
-  let overlayAfterClick = [];
-  if (await dialogTarget.count()) {
-    await dialogTarget.click({ timeout: 5_000 }).catch(() => {});
+  const actionButton = item.getByRole('button', { name: 'Действия с сообщением', exact: true });
+  let actionMenu = [];
+  if (await actionButton.count()) {
+    await actionButton.click({ timeout: 8_000 }).catch(() => {});
     await runtime.page.waitForTimeout(900);
-    overlayAfterClick = await overlaySnapshot(runtime.page);
+    actionMenu = await overlaySnapshot(runtime.page);
     await runtime.page.keyboard.press('Escape').catch(() => {});
-    await runtime.page.waitForTimeout(300);
   }
 
   console.log(`MAX_FORMAT_PROBE_DESTINATION=${resolved.title}`);
@@ -260,10 +259,8 @@ try {
     box: candidate.box.map((value) => Math.round(value)),
   })))}`);
   console.log(`MAX_FORMAT_PROBE_STRUCTURE=${JSON.stringify(structure)}`);
-  console.log(`MAX_FORMAT_PROBE_CONTROLS_BEFORE=${JSON.stringify(controlsBefore)}`);
   console.log(`MAX_FORMAT_PROBE_CONTROLS_HOVER=${JSON.stringify(controlsAfterHover)}`);
-  console.log(`MAX_FORMAT_PROBE_OVERLAY_HOVER=${JSON.stringify(overlayAfterHover)}`);
-  console.log(`MAX_FORMAT_PROBE_OVERLAY_CLICK=${JSON.stringify(overlayAfterClick)}`);
+  console.log(`MAX_FORMAT_PROBE_ACTION_MENU=${JSON.stringify(actionMenu)}`);
 } finally {
   if (runtime?.context) await runtime.context.close().catch(() => {});
   if (runtime?.browser) await runtime.browser.close().catch(() => {});
