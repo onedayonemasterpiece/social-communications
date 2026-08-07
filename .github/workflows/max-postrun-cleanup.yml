@@ -1,0 +1,50 @@
+name: MAX post-run cleanup
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/max-postrun-cleanup-trigger.txt
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPOSITORY: ${{ github.repository }}
+      ARTIFACT_IDS: "8983435928 8983506163"
+    steps:
+      - name: Delete MAX evidence artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for artifact_id in $ARTIFACT_IDS; do
+            if gh api --method DELETE "repos/${REPOSITORY}/actions/artifacts/${artifact_id}" >/dev/null 2>/tmp/artifact-error; then
+              echo "DELETED_ARTIFACT=${artifact_id}"
+            elif grep -q 'HTTP 404' /tmp/artifact-error; then
+              echo "ARTIFACT_ALREADY_ABSENT=${artifact_id}"
+            else
+              cat /tmp/artifact-error >&2
+              exit 1
+            fi
+          done
+
+      - name: Remove obsolete MAX_SESSION_V2 secret
+        shell: bash
+        run: |
+          set +e
+          gh api --method DELETE "repos/${REPOSITORY}/actions/secrets/MAX_SESSION_V2" >/tmp/secret-out 2>/tmp/secret-error
+          status=$?
+          set -e
+          if [[ $status -eq 0 ]]; then
+            echo "MAX_SESSION_V2_DELETED=1"
+          else
+            echo "MAX_SESSION_V2_DELETED=0"
+            sed -E 's/(token|secret|authorization)[^ ]*/[redacted]/Ig' /tmp/secret-error >&2
+          fi
