@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "requestId": "max-safe-stage-send-now-text-20260807-1",
+  "requestId": "max-safe-stage-send-now-text-20260807-2",
   "destination": {
-    "query": "тестовая",
+    "query": "тестовая група",
     "kind": "group"
   },
   "content": {
