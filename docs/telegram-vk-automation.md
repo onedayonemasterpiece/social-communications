@@ -85,18 +85,20 @@ Workflow:
 scripts/telegram_publish.py
 ```
 
-Единственный credential:
+Telegram не использует Desktop-клиент, Telegram Web или Playwright. Исполнение идёт напрямую через Telethon, по тому же контракту, который уже работает в Telegram Monitoring/Kaggle проекта `events-bot-new`.
+
+Credentials:
 
 ```text
 TELEGRAM_AUTH_BUNDLE_GH_ACTIONS
+TG_API_ID
+TG_API_HASH
 ```
 
-Bundle должен быть самодостаточным URL-safe base64 JSON или обычным JSON:
+`TELEGRAM_AUTH_BUNDLE_GH_ACTIONS` — URL-safe base64 JSON или обычный JSON с уже авторизованной StringSession и стабильными device-полями:
 
 ```json
 {
-  "api_id": 123456,
-  "api_hash": "...",
   "session": "...",
   "device_model": "...",
   "system_version": "...",
@@ -106,22 +108,23 @@ Bundle должен быть самодостаточным URL-safe base64 JSON
 }
 ```
 
-Обязательны только `api_id`, `api_hash` и `session`; device-поля сохраняют стабильную identity сессии. Отдельные GitHub secrets для API id/hash не нужны.
+`TG_API_ID` и `TG_API_HASH` — app credentials Telethon. Они не являются дополнительной Telegram-сессией, не требуют нового входа и не меняют существующий auth key. Для обратной совместимости self-contained bundle с `api_id` и `api_hash` также принимается, но канонический путь совпадает с Telegram Monitoring: bundle + отдельная пара app credentials.
 
 Перед записью исполнитель:
 
 1. декодирует bundle без печати значений;
-2. проверяет авторизацию StringSession;
-3. разрешает channel username либо точный dialog title;
-4. требует broadcast channel и `creator` либо `admin_rights.post_messages`;
-5. просматривает scheduled messages по marker;
-6. возвращает `already_scheduled` при точном совпадении.
+2. создаёт `TelegramClient(StringSession(session), TG_API_ID, TG_API_HASH, **device_fields)`;
+3. проверяет авторизацию готовой StringSession;
+4. разрешает channel username либо точный dialog title;
+5. требует broadcast channel и `creator` либо `admin_rights.post_messages`;
+6. просматривает scheduled messages по marker;
+7. возвращает `already_scheduled` при точном совпадении.
 
 Commit-path использует `Telethon.send_file(..., schedule=<UTC datetime>)`, после чего заново читает scheduled messages и требует один объект с точным caption, временем, message id и photo media.
 
-### Текущее состояние bundle
+### Текущее состояние credentials
 
-На 7 августа 2026 года repository secret существует, но фактический bundle содержит `session` и device-поля без `api_id`/`api_hash`. Поэтому Telegram write-path корректно заблокирован до дополнения **того же самого secret**. Публичные или чужие Telegram app credentials как обход не используются.
+На 7 августа 2026 года `TELEGRAM_AUTH_BUNDLE_GH_ACTIONS` уже содержит готовую StringSession и device identity. Для запуска в `social-communications` остаётся добавить существующие project app credentials `TG_API_ID` и `TG_API_HASH`. Новая сессия, QR-код и интерактивная авторизация не нужны.
 
 ## Command example
 
