@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "max:canary": "node scripts/max-web-canary.mjs"
+    "max:canary": "node scripts/max-web-canary-entry.mjs"
   },
   "dependencies": {
     "playwright": "1.62.0"
