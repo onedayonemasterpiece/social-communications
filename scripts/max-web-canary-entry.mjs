@@ -171,6 +171,11 @@ function adaptSession() {
 
 adaptSession();
 
+if (process.env.MAX_SESSION_VALIDATE_ONLY === '1') {
+  console.log(`MAX_SESSION_PREFLIGHT=pass contract=${contract}`);
+  process.exit(0);
+}
+
 async function restoreGenericIndexedDb(page, databases) {
   return page.evaluate(async ({ databases: payload, typeMarker }) => {
     const base64ToBytes = (base64) => {
