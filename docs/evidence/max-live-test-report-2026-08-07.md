@@ -6,8 +6,8 @@
 - session source: repository secret `MAX_SESSION`;
 - browser: Playwright Chromium;
 - target chat: `Тестовая группа`;
-- target resolution: одно точное видимое совпадение плюс проверка заголовка открытого чата;
-- LLM: не использовалась.
+- executor: deterministic, fail-closed;
+- LLM внутри браузерного commit-path: не использовалась.
 
 ## 1. Нативная отложенная отправка
 
@@ -21,54 +21,125 @@
 - выбранный месяц: `Август 2026`;
 - подтверждающая кнопка перед commit-point: `Отправить завтра в 11:00`;
 - после подтверждения composer очистился, schedule dialog закрылся;
-- визуальное evidence показывало раздел `Отложенные сообщения`, точный текст, метку `Завтра` и время `11:00`.
+- в `Отложенных сообщениях` присутствовали точный текст, метка `Завтра` и время `11:00`.
 
-### Независимая повторная проверка без отправки
+### Независимая проверка без отправки
 
 - GitHub Actions run: `31155269244`;
 - result: `status=pass`, `outcome=verified_existing`;
-- requestId: `max-test-scheduled-20260808-1100-verify-only`;
-- `verifyOnly=true`, commit-point отправки не выполнялся;
-- verifier повторно открыл `Тестовая группа`, затем `Отложенные сообщения`;
-- найдено сообщение с точным текстом и временем `11:00`;
-- повторное отложенное сообщение не создавалось.
+- `verifyOnly=true`;
+- ожидаемый staged-объект найден повторно;
+- дубль не создавался.
 
-## 2. Rich post: изображение, текст и форматированная ссылка
+## 2. Первый rich post и структурный verifier
 
-### Первая отправка
+### Первая публикация
 
 - GitHub Actions run: `31154653291`;
 - requestId: `max-test-rich-post-20260807-1`;
-- image: детерминированно сгенерированный PNG 640×360;
+- image: детерминированный PNG 640×360;
 - text: `Тест публикации с изображением и форматированной ссылкой.`;
 - visible link text: `Открыть «Полюбить Калининград»`;
 - href: `https://kenigevents.ru/`.
 
-Перед commit-point Playwright доказал:
+Перед commit-point были проверены изображение, настоящий `<a>`, видимый текст и canonical href. Старый verifier дал ложный отрицательный результат из-за объединения подписи и ссылки в один message-container. Сохранённые DOM и screenshot подтвердили фактическую публикацию.
 
-- изображение отображалось в composer;
-- Lexical composer содержал настоящий `<a>`;
-- текст ссылки совпадал;
-- canonical href совпадал.
-
-После commit-point старый verifier вернул ложный отрицательный результат `Rich post text is not visible after send`, потому что искал отдельный exact text node, тогда как MAX объединил подпись и ссылку в один контейнер. Сохранённый скриншот и DOM показывали, что пост фактически опубликован: один контейнер содержал изображение, подпись и кликабельную ссылку.
-
-### Строгая проверка и защита от дубля
+### Защита от дубля
 
 - GitHub Actions run: `31155001727`;
 - result: `status=pass`, `outcome=already_present`;
-- requestId: `max-test-rich-post-20260807-idempotency-check`;
-- verifier нашёл ровно один message listitem;
-- `textMatched=true`;
-- `media=true`;
-- `links=[true]`, то есть видимый текст и точный href совпали;
-- sender завершился до загрузки файла и до кнопки отправки;
-- дубликат поста не создан.
+- один message-container одновременно содержал текст, изображение и точный href;
+- повторная загрузка и отправка не выполнялись.
 
-После этого основной command runner получил независимый rich-post preflight и post-commit verifier. Он проверяет не отдельный текстовый узел, а структуру одного контейнера сообщения.
+## 3. Исследование нативного staged-object
 
-## 3. Артефакты
+Контекстное меню отложенного сообщения в live MAX подтвердило команды:
 
-Для live-отладки использовались обрезанные скриншоты правой панели, DOM-сводки и JSON receipts. После анализа все GitHub Actions artifacts были удалены. Финальная проверка repository artifacts API: `total_count=0`.
+- `Отправить сейчас`;
+- `Изменить время`;
+- `Редактировать`;
+- `Скопировать текст`;
+- `Выбрать`;
+- `Удалить`.
 
-Локальные ZIP-файлы, скриншоты, DOM-сводки и временные каталоги также удалены.
+Это позволило перейти от прямой публикации к двухфазной схеме `stage → verify → commit`.
+
+## 4. Неоднозначное и неточное название адресата
+
+### Реальная неоднозначность
+
+Запрос `тестовая` показал несколько правдоподобных адресатов, включая `Тестовая`, `Тестовая группа` и `Тестовая среда для розыгрыша`. Run `31157409199` завершился fail-closed до композера и до создания staged-объекта.
+
+### Опечатка
+
+Запрос `тестовая група` не дал правильного результата при буквальном поиске MAX. Resolver безопасно расширил поисковый запрос до prefix `тестовая груп`, отдельно оценил отображаемые заголовки и выбрал `Тестовая группа` с проверкой заголовка уже открытого чата.
+
+## 5. Recipient-invisible staged text → send now
+
+### Первая отправка
+
+- GitHub Actions run: `31158262330`;
+- requestId: `max-safe-stage-send-now-text-20260807-3`;
+- destination query: `тестовая група`;
+- search query used: `тестовая груп`;
+- resolved title: `Тестовая группа`;
+- strategy: `deterministic-fuzzy-expanded`;
+- text inserted through one atomic clipboard paste;
+- staged timestamp: `2026-09-06T07:36:00Z`;
+- staged object found exactly once in `Отложенных сообщениях`;
+- commit performed through `Отправить сейчас`;
+- fresh browser context found the final text in the main chat;
+- result: `status=pass`, `outcome=sent_via_staging`.
+
+До commit-point текст существовал только в `Отложенных сообщениях`, после commit-point — в основном чате.
+
+### Идемпотентность
+
+- GitHub Actions run: `31158443189`;
+- result: `status=pass`, `outcome=already_present`;
+- существующий финальный текст найден до staging;
+- новый staged-объект и дубль не создавались.
+
+## 6. Recipient-invisible staged rich post → send now
+
+### Первая отправка
+
+- GitHub Actions run: `31158690300`;
+- requestId: `max-safe-stage-rich-post-20260807-1`;
+- destination resolution: `тестовая група` → `тестовая груп` → `Тестовая группа`;
+- content: PNG 640×360, подпись и форматированная ссылка;
+- visible link text: `Открыть календарь событий`;
+- href: `https://kenigevents.ru/`;
+- caption inserted atomically through HTML Clipboard API;
+- Lexical composer contained a real `<a>` with the expected href;
+- staged object contained text, media and matching formatted link;
+- staged timestamp: `2026-09-06T07:43:00Z`;
+- commit performed through `Отправить сейчас`;
+- fresh context found one final message-container with text, media and exact href;
+- result: `status=pass`, `outcome=sent_via_staging`.
+
+### Идемпотентность
+
+- GitHub Actions run: `31158921023`;
+- result: `status=pass`, `outcome=already_present`;
+- existing final rich post found before file upload and before staging;
+- дубль не создан.
+
+## 7. Граница гарантии невидимой подготовки
+
+Доказано:
+
+- до `Отправить сейчас` сообщение отсутствует в основном чате;
+- до commit-point не возникает message-notification о сообщении;
+- готовый текст вставляется одной paste-операцией, а не печатается посимвольно;
+- все итерации и структурная проверка выполняются над staged-объектом.
+
+Не доказано отдельным тестом со второго аккаунта:
+
+- полное отсутствие кратковременного индикатора `печатает…` во время atomic paste.
+
+Поэтому система гарантирует отсутствие промежуточного сообщения и уведомления, но не заявляет неподтверждённую абсолютную гарантию отсутствия typing-indicator.
+
+## 8. Артефакты
+
+Для live-отладки использовались screenshots, ограниченные DOM-сводки и JSON receipts. После анализа все GitHub Actions artifacts и локальные копии удалены; финальная проверка repository artifacts API должна возвращать `total_count=0`.
