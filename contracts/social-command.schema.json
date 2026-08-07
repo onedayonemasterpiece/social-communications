@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/onedayonemasterpiece/social-communications/contracts/social-command.schema.json",
+  "title": "Social Communications Command v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "request_id",
+    "platform",
+    "operation",
+    "destination",
+    "content"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "platform": {
+      "enum": ["max", "telegram", "vk"]
+    },
+    "operation": {
+      "enum": ["schedule_post", "publish_now", "verify"]
+    },
+    "destination": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "scheduled_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "marker", "image"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 15000
+        },
+        "marker": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path"],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "alt": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          }
+        },
+        "links": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["text", "url"],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https://"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "enum": ["schedule_post", "verify"]
+          }
+        },
+        "required": ["operation"]
+      },
+      "then": {
+        "required": ["scheduled_at"]
+      }
+    }
+  ]
+}
