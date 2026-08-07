@@ -28,6 +28,16 @@ jobs:
       MAX_ARTIFACT_DIR: artifacts/max-web
 
     steps:
+      - name: Verify MAX session is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${MAX_SESSION:-}" ]]; then
+            echo "::error::MAX session is absent from both Actions secrets and Actions variables (max_session/MAX_SESSION)."
+            exit 1
+          fi
+          echo "MAX_SESSION_AVAILABLE=1"
+
       - name: Check out repository
         uses: actions/checkout@v4
 
@@ -42,24 +52,14 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Verify MAX session is available
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -z "${MAX_SESSION:-}" ]]; then
-            echo "::error::MAX session is absent from both Actions secrets and Actions variables (max_session/MAX_SESSION)."
-            exit 1
-          fi
-          echo "MAX_SESSION_AVAILABLE=1"
-
       - name: Open MAX Web and send canary message
         run: npm run max:canary
 
       - name: Upload short-lived Playwright evidence
-        if: always()
+        if: always() && env.MAX_SESSION != ''
         uses: actions/upload-artifact@v4
         with:
           name: max-web-canary-v2-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/max-web
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 1
