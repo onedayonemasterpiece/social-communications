@@ -24,6 +24,7 @@ function commandReceipt(command) {
     action: command.action,
     chatTitle: command.chat?.title,
     scheduleAt: command.scheduleAt || null,
+    verifyOnly: command.verifyOnly === true,
   };
 }
 
@@ -33,15 +34,35 @@ async function completeAlreadyPresent(command, verificationField, verification) 
     startedAt: new Date().toISOString(),
     completedAt: new Date().toISOString(),
     command: commandReceipt(command),
-    outcome: 'already_present',
+    outcome: command.verifyOnly === true ? 'verified_existing' : 'already_present',
     verification: {
       skippedToAvoidDuplicate: true,
       [verificationField]: verification,
     },
   };
   await writeResult(result);
-  console.log(`MAX_SEND_RESULT=already_present action=${command.action} request_id=${command.requestId}`);
+  console.log(`MAX_SEND_RESULT=${result.outcome} action=${command.action} request_id=${command.requestId}`);
   process.exit(0);
+}
+
+async function failVerifyOnly(command, verificationField, verification) {
+  const result = {
+    status: 'fail',
+    startedAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+    command: commandReceipt(command),
+    outcome: 'not_found',
+    error: {
+      name: 'VerificationOnlyNotFound',
+      message: `verifyOnly did not find the expected ${command.action} result in MAX.`,
+    },
+    verification: {
+      [verificationField]: verification,
+    },
+  };
+  await writeResult(result);
+  console.error(`MAX_SEND_FAILED=verifyOnly not found action=${command.action} request_id=${command.requestId}`);
+  process.exit(1);
 }
 
 const command = await loadCommand();
@@ -50,11 +71,20 @@ process.env.MAX_COMMAND_JSON = JSON.stringify(command);
 if (command.action === 'rich_post') {
   const existing = await verifyRichPostWithFreshSession(command, { timeoutMs: 5_000 });
   if (existing.found) await completeAlreadyPresent(command, 'strictRichPostMatch', existing);
+  if (command.verifyOnly === true) await failVerifyOnly(command, 'strictRichPostMatch', existing);
 }
 
 if (command.action === 'schedule_text') {
   const existing = await verifyScheduledMessageWithFreshSession(command);
   if (existing.found) await completeAlreadyPresent(command, 'strictScheduledMessageMatch', existing);
+  if (command.verifyOnly === true) await failVerifyOnly(command, 'strictScheduledMessageMatch', existing);
+}
+
+if (command.verifyOnly === true) {
+  await failVerifyOnly(command, 'unsupportedVerification', {
+    found: false,
+    reason: `verifyOnly is not implemented for action ${command.action}.`,
+  });
 }
 
 await import('./max-send.mjs');
