@@ -1,2 +1,2 @@
-requested_at=2026-08-07T10:38:00Z
-purpose=resolve-public-channel-titles-readonly
+requested_at=2026-08-07T10:41:00Z
+purpose=resolve-uh-ty-kaliningrad-telegram-handle-readonly
