@@ -36,6 +36,7 @@ jobs:
       MAX_COMMAND_FILE: .github/max-live-command.json
       MAX_CAPTURE_EVIDENCE: ${{ inputs.capture_evidence == true && '1' || '0' }}
       MAX_ARTIFACT_DIR: artifacts/max-send
+      MAX_DIAGNOSTIC_SCHEDULE_AT: 2026-08-07T22:45:00+02:00
     steps:
       - name: Verify session secret
         shell: bash
@@ -60,6 +61,7 @@ jobs:
         run: |
           npm run max:session:syntax
           node --check scripts/max-wait-before-verify.mjs
+          node --check scripts/max-publication-diagnostic.mjs
           python -m py_compile scripts/generate_amber_combine_poster.py
 
       - name: Install dependencies
@@ -131,6 +133,11 @@ jobs:
             console.log(`MAX_RESULT_CLEANUP=${JSON.stringify(result.cleanup)}`);
           }
           NODE
+
+      - name: Inspect public MAX post and scheduled queue safely
+        if: always()
+        continue-on-error: true
+        run: node scripts/max-publication-diagnostic.mjs
 
       - name: Fail job when MAX sender failed
         if: steps.max_send.outcome == 'failure'
