@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      MAX_SESSION: ${{ secrets.max_session || secrets.MAX_SESSION }}
+      MAX_SESSION: ${{ secrets.max_session || secrets.MAX_SESSION || vars.max_session || vars.MAX_SESSION }}
       MAX_MESSAGE: ${{ github.event.inputs.message || 'Привет мир' }}
       MAX_ARTIFACT_DIR: artifacts/max-web
 
@@ -42,12 +42,12 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Verify session secret is available
+      - name: Verify MAX session is available
         shell: bash
         run: |
           set -euo pipefail
           if [[ -z "${MAX_SESSION:-}" ]]; then
-            echo "::error::Repository secret max_session is missing or unavailable to this workflow."
+            echo "::error::MAX session is absent from both Actions secrets and Actions variables (max_session/MAX_SESSION)."
             exit 1
           fi
           echo "MAX_SESSION_AVAILABLE=1"
