@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "request_id": "sc-test-announcements-vk-20260807-2100",
+  "request_id": "sc-test-announcements-vk-20260807-2100-reverify",
   "platform": "vk",
   "operation": "verify",
   "destination": "polubit-kaliningrad-anonsy",
