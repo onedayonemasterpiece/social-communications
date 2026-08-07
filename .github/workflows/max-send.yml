@@ -74,7 +74,34 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Execute recipient-invisible staged MAX command
+        id: max_send
+        continue-on-error: true
         run: npm run max:send
+
+      - name: Report sanitized MAX result
+        if: always()
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = 'artifacts/max-send/result.json';
+          if (!fs.existsSync(path)) {
+            console.log('MAX_RESULT_FILE=absent');
+            process.exit(0);
+          }
+          const result = JSON.parse(fs.readFileSync(path, 'utf8'));
+          console.log(`MAX_RESULT_STATUS=${result.status || 'unknown'} outcome=${result.outcome || 'none'} commit_point=${result.commitPointPassed ? 'passed' : 'not-passed'}`);
+          if (result.error) {
+            const message = String(result.error.message || '').replace(/\s+/g, ' ').slice(0, 500);
+            console.log(`MAX_RESULT_ERROR code=${result.error.code || 'unknown'} message=${message}`);
+          }
+          if (result.destination?.title) console.log(`MAX_RESULT_DESTINATION=${result.destination.title}`);
+          if (result.staging?.stageAt) console.log(`MAX_RESULT_STAGE_AT=${result.staging.stageAt}`);
+          NODE
+
+      - name: Fail job when MAX sender failed
+        if: steps.max_send.outcome == 'failure'
+        run: exit 1
 
       - name: Upload short-lived cropped evidence
         if: always() && env.MAX_CAPTURE_EVIDENCE == '1'
