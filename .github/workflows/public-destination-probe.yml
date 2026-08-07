@@ -24,7 +24,11 @@ jobs:
           import re
           import urllib.request
 
-          handles = ["kldevents", "kenigevents", "lovekenig", "wheretogo39", "youwillsee39"]
+          handles = [
+              "kldevents", "kenigevents", "lovekenig",
+              "uhtykaliningrad", "uhtykaliningrad39", "uhty_kaliningrad",
+              "uhtykgd", "uhty39", "wheretogo39", "youwillsee39",
+          ]
           results = []
           for handle in handles:
               request = urllib.request.Request(
