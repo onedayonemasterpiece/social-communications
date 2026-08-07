@@ -295,6 +295,16 @@ async function visibleListItems(page) {
   return items;
 }
 
+function emptyDiagnostics() {
+  return {
+    inspected: 0,
+    exactTextMatched: 0,
+    expectedTimeMatched: 0,
+    textAndTimeMatched: 0,
+    structureMatched: 0,
+  };
+}
+
 function emptyScheduledVerification(expectedTime, queue = null) {
   return {
     found: false,
@@ -304,6 +314,7 @@ function emptyScheduledVerification(expectedTime, queue = null) {
     match: null,
     matches: [],
     queue,
+    diagnostics: emptyDiagnostics(),
   };
 }
 
@@ -315,13 +326,20 @@ export async function findScheduledContent(page, content, options = {}) {
   if (opened.absent) return emptyScheduledVerification(expectedTime, opened);
 
   const matches = [];
+  const diagnostics = emptyDiagnostics();
   const exactText = normalizeText(content.text);
   for (const item of await visibleListItems(page)) {
+    diagnostics.inspected += 1;
     const bodyText = normalizeText(await item.innerText().catch(() => ''));
-    if (!bodyText.includes(exactText)) continue;
-    if (expectedTime && !bodyText.includes(expectedTime)) continue;
+    const exactTextMatched = bodyText.includes(exactText);
+    const expectedTimeMatched = !expectedTime || bodyText.includes(expectedTime);
+    if (exactTextMatched) diagnostics.exactTextMatched += 1;
+    if (expectedTimeMatched) diagnostics.expectedTimeMatched += 1;
+    if (!exactTextMatched || !expectedTimeMatched) continue;
+    diagnostics.textAndTimeMatched += 1;
     const structure = await contentMatchesContainer(item, content);
     if (!structure.matched) continue;
+    diagnostics.structureMatched += 1;
     matches.push({ item, bodyText, structure, box: await item.boundingBox() });
   }
   return {
@@ -336,6 +354,7 @@ export async function findScheduledContent(page, content, options = {}) {
       box: candidate.box,
     })),
     queue: opened,
+    diagnostics,
   };
 }
 
