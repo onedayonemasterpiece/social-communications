@@ -28,28 +28,66 @@ function summarize(value, depth = 0, seen = new WeakSet()) {
   seen.add(value);
 
   if (Array.isArray(value)) {
-    const result = {
-      type: 'array',
-      length: value.length,
-    };
-    if (depth < 5) {
-      result.items = value.slice(0, 5).map((item) => summarize(item, depth + 1, seen));
-    }
+    const result = { type: 'array', length: value.length };
+    if (depth < 5) result.items = value.slice(0, 5).map((item) => summarize(item, depth + 1, seen));
     return result;
   }
 
   const keys = Object.keys(value).sort();
-  const result = {
-    type: 'object',
-    keyCount: keys.length,
-    keys,
-  };
+  const result = { type: 'object', keyCount: keys.length, keys };
   if (depth < 5) {
     result.properties = Object.fromEntries(
       keys.slice(0, 100).map((key) => [key, summarize(value[key], depth + 1, seen)]),
     );
   }
   return result;
+}
+
+function appendMissingJsonClosers(value) {
+  const stack = [];
+  let inString = false;
+  let escaped = false;
+
+  for (const character of value) {
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      inString = true;
+    } else if (character === '{' || character === '[') {
+      stack.push(character);
+    } else if (character === '}' || character === ']') {
+      const expected = character === '}' ? '{' : '[';
+      if (stack.at(-1) === expected) stack.pop();
+    }
+  }
+
+  if (inString || stack.length === 0 || stack.length > 8) {
+    return { repaired: value, appended: '', inString, stackDepth: stack.length };
+  }
+
+  const appended = stack.reverse().map((opening) => (opening === '{' ? '}' : ']')).join('');
+  return { repaired: `${value}${appended}`, appended, inString, stackDepth: stack.length };
+}
+
+function safeParse(value) {
+  try {
+    return { success: true, parsed: JSON.parse(value) };
+  } catch (error) {
+    return {
+      success: false,
+      errorName: error?.name || 'Error',
+      errorMessage: String(error?.message || error).replace(/position \d+/i, 'position [redacted]'),
+    };
+  }
 }
 
 const report = {
@@ -61,23 +99,48 @@ const report = {
 
 let current = raw;
 for (let depth = 0; depth < 4; depth += 1) {
-  try {
-    const parsed = JSON.parse(current);
-    report.parses.push({ depth, success: true, shape: summarize(parsed) });
-    if (typeof parsed === 'string' && parsed !== current) {
-      current = parsed.trim();
+  const direct = safeParse(current);
+  if (direct.success) {
+    report.parses.push({ depth, success: true, mode: 'direct', shape: summarize(direct.parsed) });
+    if (typeof direct.parsed === 'string' && direct.parsed !== current) {
+      current = direct.parsed.trim();
       continue;
     }
     break;
-  } catch (error) {
-    report.parses.push({
-      depth,
-      success: false,
-      errorName: error?.name || 'Error',
-      errorMessage: String(error?.message || error).replace(/position \d+/i, 'position [redacted]'),
-    });
-    break;
   }
+
+  report.parses.push({
+    depth,
+    success: false,
+    mode: 'direct',
+    errorName: direct.errorName,
+    errorMessage: direct.errorMessage,
+  });
+
+  const repair = appendMissingJsonClosers(current);
+  report.repair = {
+    attempted: repair.appended.length > 0,
+    appendedCharacters: repair.appended.length,
+    appendedKinds: repair.appended.replace(/}/g, 'object-close').replace(/]/g, 'array-close'),
+    stringWasOpenAtEnd: repair.inString,
+    unmatchedContainerCount: repair.stackDepth,
+  };
+
+  if (repair.appended.length > 0) {
+    const repaired = safeParse(repair.repaired);
+    if (repaired.success) {
+      report.parses.push({ depth, success: true, mode: 'appended-missing-closers', shape: summarize(repaired.parsed) });
+    } else {
+      report.parses.push({
+        depth,
+        success: false,
+        mode: 'appended-missing-closers',
+        errorName: repaired.errorName,
+        errorMessage: repaired.errorMessage,
+      });
+    }
+  }
+  break;
 }
 
 await fs.writeFile(
