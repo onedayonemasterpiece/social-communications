@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "request_id": "sc-test-announcements-telegram-20260807-2100",
+  "platform": "telegram",
+  "operation": "schedule_post",
+  "destination": "polubit-kaliningrad-anonsy",
+  "scheduled_at": "2026-08-07T21:00:00+02:00",
+  "content": {
+    "text": "Тестовая публикация\n\nПроверяем отложенную публикацию с изображением из контура social-communications.\n\nПолюбить Калининград Анонсы: https://kenigevents.ru/\n\nМетка: SC-TG-20260807-2100",
+    "marker": "SC-TG-20260807-2100",
+    "image": {
+      "path": "generated/social-test-post.png",
+      "alt": "Тестовое изображение для проверки отложенной публикации"
+    },
+    "links": [
+      {
+        "text": "Полюбить Калининград Анонсы",
+        "url": "https://kenigevents.ru/"
+      }
+    ]
+  }
+}
