@@ -16,8 +16,16 @@ jobs:
     timeout-minutes: 3
     env:
       TELEGRAM_AUTH_BUNDLE_GH_ACTIONS: ${{ secrets.TELEGRAM_AUTH_BUNDLE_GH_ACTIONS }}
+      SECRET_TG_API_ID: ${{ secrets.TG_API_ID }}
+      SECRET_TG_API_HASH: ${{ secrets.TG_API_HASH }}
+      SECRET_TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+      SECRET_TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+      VAR_TG_API_ID: ${{ vars.TG_API_ID }}
+      VAR_TG_API_HASH: ${{ vars.TG_API_HASH }}
+      VAR_TELEGRAM_API_ID: ${{ vars.TELEGRAM_API_ID }}
+      VAR_TELEGRAM_API_HASH: ${{ vars.TELEGRAM_API_HASH }}
     steps:
-      - name: Inspect bundle structure without values
+      - name: Inspect bundle and credential sources without values
         shell: bash
         run: |
           set -euo pipefail
@@ -51,11 +59,10 @@ jobs:
               raise SystemExit('BUNDLE_DECODED=false')
 
           fmt, bundle = decode(raw)
-          keys = sorted(str(key) for key in bundle.keys())
           print('BUNDLE_PRESENT=true')
           print('BUNDLE_DECODED=true')
           print(f'BUNDLE_FORMAT={fmt}')
-          print('BUNDLE_KEYS=' + ','.join(keys))
+          print('BUNDLE_KEYS=' + ','.join(sorted(str(key) for key in bundle.keys())))
           for key in (
               'session', 'api_id', 'api_hash', 'device_model', 'system_version',
               'app_version', 'lang_code', 'system_lang_code'
@@ -64,4 +71,12 @@ jobs:
               print(f'BUNDLE_KEY_{key.upper()}_PRESENT={bool(value)}')
               if isinstance(value, str):
                   print(f'BUNDLE_KEY_{key.upper()}_LENGTH={len(value)}')
+
+          for name in (
+              'SECRET_TG_API_ID', 'SECRET_TG_API_HASH',
+              'SECRET_TELEGRAM_API_ID', 'SECRET_TELEGRAM_API_HASH',
+              'VAR_TG_API_ID', 'VAR_TG_API_HASH',
+              'VAR_TELEGRAM_API_ID', 'VAR_TELEGRAM_API_HASH',
+          ):
+              print(f'{name}_PRESENT={bool((os.environ.get(name) or "").strip())}')
           PY
