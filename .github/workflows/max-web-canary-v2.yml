@@ -46,6 +46,9 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Capture redacted MAX session structure
+        run: node scripts/max-session-shape.mjs
+
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
