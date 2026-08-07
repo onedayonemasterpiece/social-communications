@@ -1,3 +1,3 @@
-requested_at=2026-08-07T06:39:30Z
-artifact_ids=8984312534 8984527401 8984619134
-reason=MAX scheduling artifacts analyzed
+requested_at=2026-08-07T06:48:30Z
+artifact_ids=8984668213 8984797762
+reason=MAX rich-post evidence analyzed and idempotency confirmed
