@@ -78,6 +78,77 @@ async function setSpinbutton(page, label, value) {
   if (actual !== expected) throw new Error(`MAX ${label} spinbutton expected ${expected}, received ${actual}.`);
 }
 
+async function findVisibleContextAction(page, labels) {
+  for (const label of labels) {
+    const locators = [
+      page.getByRole('menuitem', { name: label, exact: true }),
+      page.getByRole('button', { name: label, exact: true }),
+      page.getByText(label, { exact: true }),
+    ];
+    for (const locator of locators) {
+      const action = await firstVisible(locator, 100);
+      if (action) return { action, label };
+    }
+  }
+  return null;
+}
+
+async function contextDiagnostics(page, target) {
+  const targetSummary = await target.evaluate((element) => ({
+    tag: element.tagName.toLowerCase(),
+    role: element.getAttribute('role') || '',
+    aria: element.getAttribute('aria-label') || '',
+    title: element.getAttribute('title') || '',
+    text: String(element.innerText || element.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160),
+    className: String(element.className || '').slice(0, 240),
+  })).catch(() => null);
+  const overlays = await page.evaluate(() => {
+    const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+    const visible = (element) => {
+      const style = getComputedStyle(element);
+      const box = element.getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) > 0 && box.width > 0 && box.height > 0;
+    };
+    const selector = '[role="menu"], [role="dialog"], [data-radix-popper-content-wrapper], [class*="popover" i], [class*="menu" i]';
+    return Array.from(document.querySelectorAll(selector))
+      .filter(visible)
+      .map((element) => clean(element.innerText || element.textContent || ''))
+      .filter(Boolean)
+      .slice(0, 20);
+  }).catch(() => []);
+  return { target: targetSummary, overlays };
+}
+
+async function openContextAction(page, target, labels) {
+  const gestures = [
+    async () => target.click({ button: 'right' }),
+    async () => {
+      const box = await target.boundingBox();
+      if (!box) throw new Error('MAX context target has no bounding box.');
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: 'right' });
+    },
+    async () => {
+      await target.focus();
+      await page.keyboard.press('Shift+F10');
+    },
+    async () => target.dispatchEvent('contextmenu', { bubbles: true, button: 2, buttons: 2 }),
+  ];
+
+  for (const gesture of gestures) {
+    await page.keyboard.press('Escape').catch(() => {});
+    await gesture().catch(() => {});
+    await page.waitForTimeout(600);
+    const found = await findVisibleContextAction(page, labels);
+    if (found) return found;
+  }
+
+  const diagnostics = await contextDiagnostics(page, target);
+  throw new Error(
+    `MAX context action «${labels.join('»/«')}» was not found. `
+      + `Target=${JSON.stringify(diagnostics.target)} overlays=${JSON.stringify(diagnostics.overlays)}`,
+  );
+}
+
 export async function schedulePreparedComposer(page, scheduleAt, timeZone = 'Europe/Kaliningrad') {
   const scheduleDate = scheduleAt instanceof Date ? scheduleAt : new Date(scheduleAt);
   if (Number.isNaN(scheduleDate.getTime())) throw new Error(`Invalid MAX schedule timestamp: ${scheduleAt}.`);
@@ -86,9 +157,11 @@ export async function schedulePreparedComposer(page, scheduleAt, timeZone = 'Eur
   }
   const target = zonedParts(scheduleDate, timeZone);
   const send = await findSendButton(page);
-  await send.click({ button: 'right' });
-  const menuItem = page.getByRole('menuitem', { name: 'Отправить позже', exact: true });
-  await menuItem.waitFor({ state: 'visible' });
+  const { action: menuItem } = await openContextAction(page, send, [
+    'Отправить позже',
+    'Запланировать отправку',
+    'Запланировать',
+  ]);
   await menuItem.click();
 
   const monthTitle = await chooseCalendarMonth(page, target);
@@ -177,10 +250,6 @@ export async function findScheduledContent(page, content, options = {}) {
     ? zonedTime(new Date(options.scheduleAt), options.timeZone || 'Europe/Kaliningrad')
     : null;
   const opened = await openScheduledMessages(page, { allowMissing: true });
-  // MAX hides the scheduled-messages button when a destination has no queued
-  // messages. Treat that state as an authoritative empty queue during preflight.
-  // After creation the button must appear; the subsequent strict verification
-  // will still fail safely if it does not.
   if (opened.absent) return emptyScheduledVerification(expectedTime);
 
   const matches = [];
@@ -209,9 +278,7 @@ export async function findScheduledContent(page, content, options = {}) {
 export async function sendScheduledNow(page, scheduledMatch) {
   const item = scheduledMatch?.item;
   if (!item) throw new Error('MAX sendScheduledNow requires a unique scheduled message locator.');
-  await item.click({ button: 'right' });
-  const menuItem = page.getByRole('menuitem', { name: 'Отправить сейчас', exact: true });
-  await menuItem.waitFor({ state: 'visible' });
+  const { action: menuItem } = await openContextAction(page, item, ['Отправить сейчас']);
   await menuItem.click();
   await page.waitForTimeout(2_000);
   if (await item.isVisible().catch(() => false)) {
@@ -224,9 +291,7 @@ export async function deleteScheduledMessage(page, scheduledMatch) {
   const item = scheduledMatch?.item;
   if (!item) return { deleted: false, reason: 'scheduled-item-absent' };
   try {
-    await item.click({ button: 'right' });
-    const deleteItem = page.getByRole('menuitem', { name: 'Удалить', exact: true });
-    await deleteItem.waitFor({ state: 'visible', timeout: 5_000 });
+    const { action: deleteItem } = await openContextAction(page, item, ['Удалить']);
     await deleteItem.click();
     await page.waitForTimeout(500);
     const confirm = await firstVisible(page.getByRole('button', { name: 'Удалить', exact: true }), 20);
