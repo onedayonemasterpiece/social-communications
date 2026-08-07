@@ -49,14 +49,14 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install pinned runtime dependency
-        run: python -m pip install --disable-pip-version-check 'telethon==1.40.0'
+      - name: Install pinned runtime dependencies
+        run: python -m pip install --disable-pip-version-check 'telethon==1.40.0' 'Pillow==11.3.0'
 
       - name: Validate sources and registry
         shell: bash
         run: |
           set -euo pipefail
-          python -m py_compile scripts/social_registry.py scripts/telegram_publish.py
+          python -m py_compile scripts/social_registry.py scripts/telegram_publish.py scripts/generate_amber_combine_poster.py
           node --check scripts/social-generate-test-image.mjs
           python - <<'PY'
           import json
@@ -90,6 +90,9 @@ jobs:
 
       - name: Generate deterministic private test image
         run: npm run social:test-image
+
+      - name: Generate approved amber-combine poster
+        run: python scripts/generate_amber_combine_poster.py generated/amber-combine-poster.png
 
       - name: Publish or verify Telegram command
         id: publish
