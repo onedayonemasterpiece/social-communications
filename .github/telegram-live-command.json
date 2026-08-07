@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "request_id": "sc-test-announcements-telegram-20260807-2100",
+  "request_id": "sc-test-announcements-telegram-20260807-2100-verify-1",
   "platform": "telegram",
-  "operation": "schedule_post",
+  "operation": "verify",
   "destination": "polubit-kaliningrad-anonsy",
   "scheduled_at": "2026-08-07T21:00:00+02:00",
   "content": {
