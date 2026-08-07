@@ -23,6 +23,7 @@ const result = {
   controls: null,
   rightClick: null,
   scheduleDialog: null,
+  attachment: null,
 };
 
 let runtime;
@@ -39,6 +40,7 @@ try {
     composerBox: await composer.boundingBox(),
     sendBox: await sendButton.boundingBox(),
     attachmentBox: await attachmentButton.boundingBox(),
+    composerHtml: await composer.evaluate((element) => element.outerHTML.slice(0, 2_000)),
   };
 
   await typePlainText(composer, 'Черновик диагностики — не отправлять');
@@ -51,30 +53,57 @@ try {
 
   await runtime.page.getByRole('menuitem', { name: 'Отправить позже', exact: true }).click();
   await runtime.page.waitForTimeout(800);
-  result.scheduleDialog = {
-    overlayText: await visibleOverlayText(runtime.page),
-    fields: await runtime.page.evaluate(() => {
-      const visible = (element) => {
-        const style = getComputedStyle(element);
+  result.scheduleDialog = await runtime.page.evaluate(() => {
+    const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+    const visible = (element) => {
+      const style = getComputedStyle(element);
+      const box = element.getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) > 0 && box.width > 0 && box.height > 0;
+    };
+    const describe = (element) => ({
+      tag: element.tagName.toLowerCase(),
+      type: element.getAttribute('type') || '',
+      role: element.getAttribute('role') || '',
+      aria: element.getAttribute('aria-label') || '',
+      title: element.getAttribute('title') || '',
+      placeholder: element.getAttribute('placeholder') || '',
+      value: 'value' in element ? String(element.value || '') : clean(element.textContent || ''),
+      text: clean(element.innerText || element.textContent || ''),
+      tabIndex: element.tabIndex,
+      className: typeof element.className === 'string' ? element.className.slice(0, 300) : '',
+      dataTestid: element.getAttribute('data-testid') || '',
+      box: (() => {
         const box = element.getBoundingClientRect();
-        return style.display !== 'none' && style.visibility !== 'hidden' && box.width > 0 && box.height > 0;
-      };
-      return Array.from(document.querySelectorAll('input, textarea, select, [contenteditable="true"], [role="spinbutton"]'))
+        return [Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)];
+      })(),
+    });
+    return {
+      fields: Array.from(document.querySelectorAll('input, textarea, select, [contenteditable="true"], [role="spinbutton"]'))
         .filter(visible)
-        .map((element) => ({
-          tag: element.tagName.toLowerCase(),
-          type: element.getAttribute('type') || '',
-          role: element.getAttribute('role') || '',
-          aria: element.getAttribute('aria-label') || '',
-          placeholder: element.getAttribute('placeholder') || '',
-          value: 'value' in element ? String(element.value || '') : String(element.textContent || ''),
-        }));
-    }),
-  };
+        .map(describe),
+      clickables: Array.from(document.querySelectorAll('button, [role="button"], [role="spinbutton"], [tabindex]'))
+        .filter(visible)
+        .map(describe)
+        .filter((item) => item.box[0] >= 470 || /Отправить позже|Август|Часы|Минуты/.test(`${item.text} ${item.aria}`))
+        .slice(0, 300),
+    };
+  });
+  result.scheduleDialog.overlayText = await visibleOverlayText(runtime.page);
   await captureEvidence(runtime.page, artifactDir, '03-schedule-dialog');
 
   await runtime.page.keyboard.press('Escape').catch(() => {});
   await runtime.page.keyboard.press('Escape').catch(() => {});
+
+  const chooserPromise = runtime.page.waitForEvent('filechooser', { timeout: 5_000 });
+  await attachmentButton.click();
+  const chooser = await chooserPromise;
+  const chooserElement = chooser.element();
+  result.attachment = {
+    multiple: chooser.isMultiple(),
+    accept: await chooserElement.getAttribute('accept'),
+    inputType: await chooserElement.getAttribute('type'),
+  };
+
   await clearComposer(composer);
   result.status = 'pass';
   result.completedAt = new Date().toISOString();
