@@ -1,0 +1,49 @@
+name: Apply Telegram Telethon alignment 2026-08-07
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/apply-telegram-telethon-alignment-20260807.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-telegram-telethon-alignment-20260807
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply migration
+        run: python scripts/apply_telegram_telethon_alignment_20260807.py
+
+      - name: Run contract checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check 'telethon==1.40.0'
+          python -m py_compile scripts/social_registry.py scripts/telegram_publish.py scripts/vk_publish.py
+          python -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Commit migration result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name onedayonemasterpiece
+          git config user.email estershow6@gmail.com
+          git add -A
+          git diff --cached --quiet && { echo 'No changes to commit'; exit 0; }
+          git commit -m 'Align Telegram publishing with existing Telethon auth contract'
+          git push origin HEAD:main
