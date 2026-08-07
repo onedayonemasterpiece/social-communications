@@ -37,13 +37,13 @@ jobs:
           python -m py_compile scripts/social_registry.py scripts/telegram_publish.py scripts/vk_publish.py
           python -m unittest discover -s tests -p 'test_*.py'
 
-      - name: Commit migration result
+      - name: Commit non-workflow migration result
         shell: bash
         run: |
           set -euo pipefail
           git config user.name onedayonemasterpiece
           git config user.email estershow6@gmail.com
-          git add -A
+          git add scripts/telegram_publish.py tests/test_social_publish_contracts.py
           git diff --cached --quiet && { echo 'No changes to commit'; exit 0; }
-          git commit -m 'Align Telegram publishing with existing Telethon auth contract'
+          git commit -m 'Align Telegram publisher with existing Telethon auth contract'
           git push origin HEAD:main
