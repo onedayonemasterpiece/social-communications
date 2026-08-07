@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Deterministic Telegram channel publisher for social-communications.
 
-The GitHub Actions session is isolated behind TELEGRAM_AUTH_BUNDLE_GH_ACTIONS.
-The bundle must be self-contained: api_id, api_hash, StringSession, and optional
-Telethon device parameters. The adapter never prints the decoded values.
+The already-authorized StringSession and stable device identity come from
+TELEGRAM_AUTH_BUNDLE_GH_ACTIONS. Telegram app credentials come from
+TG_API_ID/TG_API_HASH, matching the existing Telegram Monitoring/Kaggle contract.
+Legacy self-contained bundles remain accepted. Decoded values are never printed.
 """
 
 from __future__ import annotations
@@ -176,27 +177,47 @@ def _first_value(payload: dict[str, Any], names: tuple[str, ...]) -> Any:
     return None
 
 
-def _load_auth_bundle(raw: str) -> TelegramAuthBundle:
+def _load_auth_bundle(
+    raw: str,
+    *,
+    api_id_value: object = None,
+    api_hash_value: object = None,
+) -> TelegramAuthBundle:
     payload = _decode_json_bundle(raw)
-    api_id = _first_value(payload, ("api_id", "apiId", "telegram_api_id", "tg_api_id"))
-    api_hash = _first_value(payload, ("api_hash", "apiHash", "telegram_api_hash", "tg_api_hash"))
-    session = _first_value(payload, ("session", "session_string", "string_session", "telegram_session"))
-    if not api_id or not api_hash or not session:
-        present = {
-            "api_id": bool(api_id),
-            "api_hash": bool(api_hash),
-            "session": bool(session),
-        }
+    embedded_api_id = _first_value(
+        payload, ("api_id", "apiId", "telegram_api_id", "tg_api_id")
+    )
+    embedded_api_hash = _first_value(
+        payload, ("api_hash", "apiHash", "telegram_api_hash", "tg_api_hash")
+    )
+    session = _first_value(
+        payload, ("session", "session_string", "string_session", "telegram_session")
+    )
+
+    # Canonical events-bot contract: app credentials are separate, while the
+    # auth bundle carries the already-authorized StringSession and device identity.
+    api_id = _clean_text(api_id_value) or _clean_text(embedded_api_id)
+    api_hash = _clean_text(api_hash_value) or _clean_text(embedded_api_hash)
+
+    missing: list[str] = []
+    if not session:
+        missing.append("TELEGRAM_AUTH_BUNDLE_GH_ACTIONS.session")
+    if not api_id:
+        missing.append("TG_API_ID")
+    if not api_hash:
+        missing.append("TG_API_HASH")
+    if missing:
         raise TelegramPublishError(
-            "TELEGRAM_AUTH_BUNDLE_GH_ACTIONS is not self-contained; "
-            f"required-field presence={json.dumps(present, sort_keys=True)}"
+            "Telegram credentials are incomplete; no new session or interactive login "
+            f"is required. Missing: {', '.join(missing)}"
         )
+
     try:
         parsed_api_id = int(api_id)
     except (TypeError, ValueError) as exc:
-        raise TelegramPublishError("Telegram api_id in bundle is not an integer") from exc
+        raise TelegramPublishError("TG_API_ID is not an integer") from exc
     if parsed_api_id <= 0:
-        raise TelegramPublishError("Telegram api_id in bundle must be positive")
+        raise TelegramPublishError("TG_API_ID must be positive")
 
     def optional(name: str) -> str | None:
         value = _first_value(payload, (name,))
@@ -205,7 +226,7 @@ def _load_auth_bundle(raw: str) -> TelegramAuthBundle:
 
     return TelegramAuthBundle(
         api_id=parsed_api_id,
-        api_hash=_clean_text(api_hash),
+        api_hash=api_hash,
         session=_clean_text(session),
         device_model=optional("device_model"),
         system_version=optional("system_version"),
@@ -448,7 +469,11 @@ def main() -> int:
     args = parser.parse_args()
     try:
         command = _load_command(args.command)
-        bundle = _load_auth_bundle(os.getenv("TELEGRAM_AUTH_BUNDLE_GH_ACTIONS", ""))
+        bundle = _load_auth_bundle(
+            os.getenv("TELEGRAM_AUTH_BUNDLE_GH_ACTIONS", ""),
+            api_id_value=os.getenv("TG_API_ID", ""),
+            api_hash_value=os.getenv("TG_API_HASH", ""),
+        )
         if args.preflight_only:
             receipt = {
                 "schema": "social.telegram.preflight.v1",

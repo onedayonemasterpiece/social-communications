@@ -15,10 +15,27 @@ import vk_publish  # noqa: E402
 
 
 class TelegramBundleTests(unittest.TestCase):
-    def test_self_contained_urlsafe_bundle_is_accepted(self) -> None:
+    @staticmethod
+    def _encoded(payload: dict) -> str:
+        return base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        ).decode("ascii").rstrip("=")
+
+    def test_self_contained_legacy_bundle_is_accepted(self) -> None:
         payload = {
             "api_id": 123456,
             "api_hash": "hash-value",
+            "session": "session-value",
+            "device_model": "GitHub Actions",
+        }
+        bundle = telegram_publish._load_auth_bundle(self._encoded(payload))
+        self.assertEqual(bundle.api_id, 123456)
+        self.assertEqual(bundle.api_hash, "hash-value")
+        self.assertEqual(bundle.session, "session-value")
+        self.assertEqual(bundle.device_model, "GitHub Actions")
+
+    def test_monitoring_style_bundle_uses_external_app_credentials(self) -> None:
+        payload = {
             "session": "session-value",
             "device_model": "GitHub Actions",
             "system_version": "Ubuntu",
@@ -26,20 +43,19 @@ class TelegramBundleTests(unittest.TestCase):
             "lang_code": "ru",
             "system_lang_code": "ru",
         }
-        encoded = base64.urlsafe_b64encode(
-            json.dumps(payload, separators=(",", ":")).encode("utf-8")
-        ).decode("ascii").rstrip("=")
-        bundle = telegram_publish._load_auth_bundle(encoded)
-        self.assertEqual(bundle.api_id, 123456)
-        self.assertEqual(bundle.api_hash, "hash-value")
+        bundle = telegram_publish._load_auth_bundle(
+            self._encoded(payload),
+            api_id_value="654321",
+            api_hash_value="external-hash",
+        )
+        self.assertEqual(bundle.api_id, 654321)
+        self.assertEqual(bundle.api_hash, "external-hash")
         self.assertEqual(bundle.session, "session-value")
-        self.assertEqual(bundle.device_model, "GitHub Actions")
 
-    def test_session_only_bundle_fails_closed(self) -> None:
+    def test_monitoring_style_bundle_without_app_credentials_fails_closed(self) -> None:
         payload = {"session": "session-value", "device_model": "GitHub Actions"}
-        encoded = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
-        with self.assertRaisesRegex(telegram_publish.TelegramPublishError, "not self-contained"):
-            telegram_publish._load_auth_bundle(encoded)
+        with self.assertRaisesRegex(telegram_publish.TelegramPublishError, "TG_API_ID"):
+            telegram_publish._load_auth_bundle(self._encoded(payload))
 
 
 class CommandContractTests(unittest.TestCase):
