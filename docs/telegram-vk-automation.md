@@ -117,14 +117,28 @@ TG_API_HASH
 3. проверяет авторизацию готовой StringSession;
 4. разрешает channel username либо точный dialog title;
 5. требует broadcast channel и `creator` либо `admin_rights.post_messages`;
-6. просматривает scheduled messages по marker;
+6. читает нативную scheduled queue через `messages.getScheduledHistory` и ищет marker;
 7. возвращает `already_scheduled` при точном совпадении.
 
-Commit-path использует `Telethon.send_file(..., schedule=<UTC datetime>)`, после чего заново читает scheduled messages и требует один объект с точным caption, временем, message id и photo media.
+Commit-path использует `Telethon.send_file(..., schedule=<UTC datetime>)`, после чего повторно читает scheduled queue и требует один объект с точным caption, временем, message id и photo media. Для защиты от краткой eventual consistency post-commit проверка выполняет ограниченные повторы.
 
-### Текущее состояние credentials
+### Live-результат 7 августа 2026 года
 
-На 7 августа 2026 года `TELEGRAM_AUTH_BUNDLE_GH_ACTIONS` уже содержит готовую StringSession и device identity. Для запуска в `social-communications` остаётся добавить существующие project app credentials `TG_API_ID` и `TG_API_HASH`. Новая сессия, QR-код и интерактивная авторизация не нужны.
+Credential readiness подтверждён в `onedayonemasterpiece/social-communications`: готовая StringSession, `TG_API_ID` и `TG_API_HASH` доступны без повторной авторизации.
+
+В Telegram-канале `@kenigevents` (`Полюбить Калининград |️ Анонсы`) поставлена нативная отложенная тестовая публикация с PNG на:
+
+```text
+2026-08-07T21:00:00+02:00
+```
+
+Telegram message id:
+
+```text
+2629
+```
+
+Первичная запись создала scheduled message. Независимый `verify` run через `messages.getScheduledHistory` подтвердил точный caption, marker, время и photo media и вернул `already_scheduled`, не создавая дубль.
 
 ## Command example
 
