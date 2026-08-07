@@ -8,6 +8,12 @@ const RUSSIAN_MONTHS = new Map([
   ['Июль', 7], ['Август', 8], ['Сентябрь', 9], ['Октябрь', 10], ['Ноябрь', 11], ['Декабрь', 12],
 ]);
 
+const SCHEDULED_VIEW_TITLES = [
+  'Отложенные сообщения',
+  'Запланированные посты',
+  'Запланированные сообщения',
+];
+
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -202,41 +208,94 @@ export async function schedulePreparedComposer(page, scheduleAt, timeZone = 'Eur
   };
 }
 
-export async function openScheduledMessages(page, options = {}) {
-  const existingTitle = await firstVisible(page.getByText('Отложенные сообщения', { exact: true }), 20);
-  if (existingTitle) return { alreadyOpen: true, absent: false };
-  const scheduledButton = await firstVisible(page.locator([
-    'button[aria-label="Открыть отложенные сообщения"]',
-    'button[aria-label*="отложенные сообщения" i]',
-  ].join(',')));
-  if (!scheduledButton) {
-    if (options.allowMissing) {
-      return { alreadyOpen: false, absent: true };
-    }
-    throw new Error('MAX scheduled-messages button was not found.');
+async function findScheduledViewTitle(page) {
+  for (const title of SCHEDULED_VIEW_TITLES) {
+    const visible = await firstVisible(page.getByText(title, { exact: true }), 100);
+    if (visible) return { locator: visible, title };
   }
+  return null;
+}
+
+async function scheduledControlDiagnostics(page) {
+  return page.evaluate(() => {
+    const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+    const visible = (element) => {
+      const style = getComputedStyle(element);
+      const box = element.getBoundingClientRect();
+      return style.display !== 'none'
+        && style.visibility !== 'hidden'
+        && Number(style.opacity || 1) > 0
+        && box.width > 0
+        && box.height > 0
+        && box.x > 470;
+    };
+    return Array.from(document.querySelectorAll('button, [role="button"], [aria-label], [title]'))
+      .filter(visible)
+      .map((element) => ({
+        aria: clean(element.getAttribute('aria-label') || ''),
+        title: clean(element.getAttribute('title') || ''),
+        text: clean(element.innerText || element.textContent || ''),
+      }))
+      .filter((item) => /отлож|заплан|распис|пост/i.test(`${item.aria} ${item.title} ${item.text}`))
+      .slice(0, 30);
+  }).catch(() => []);
+}
+
+export async function openScheduledMessages(page, options = {}) {
+  const existing = await findScheduledViewTitle(page);
+  if (existing) return { alreadyOpen: true, absent: false, title: existing.title, diagnostics: [] };
+
+  let scheduledButton = await firstVisible(page.locator([
+    'button[aria-label="Открыть отложенные сообщения"]',
+    'button[aria-label*="отлож" i]',
+    'button[title*="отлож" i]',
+    'button[aria-label*="заплан" i]',
+    'button[title*="заплан" i]',
+    '[role="button"][aria-label*="отлож" i]',
+    '[role="button"][aria-label*="заплан" i]',
+  ].join(',')), 100);
+
+  if (!scheduledButton) {
+    for (const label of SCHEDULED_VIEW_TITLES) {
+      scheduledButton = await firstVisible(page.getByRole('button', { name: label, exact: true }), 50)
+        || await firstVisible(page.getByText(label, { exact: true }), 100);
+      if (scheduledButton) break;
+    }
+  }
+
+  if (!scheduledButton) {
+    const diagnostics = await scheduledControlDiagnostics(page);
+    if (options.allowMissing) {
+      return { alreadyOpen: false, absent: true, title: null, diagnostics };
+    }
+    throw new Error(`MAX scheduled-messages control was not found. candidates=${JSON.stringify(diagnostics)}`);
+  }
+
   await scheduledButton.click();
   await page.waitForTimeout(1_200);
-  const title = await firstVisible(page.getByText('Отложенные сообщения', { exact: true }), 50);
-  if (!title) throw new Error('MAX scheduled-messages view did not open.');
-  return { alreadyOpen: false, absent: false };
+  const opened = await findScheduledViewTitle(page);
+  if (!opened) {
+    const diagnostics = await scheduledControlDiagnostics(page);
+    throw new Error(`MAX scheduled-messages view did not open. candidates=${JSON.stringify(diagnostics)}`);
+  }
+  return { alreadyOpen: false, absent: false, title: opened.title, diagnostics: [] };
 }
 
 async function visibleListItems(page) {
-  const locator = page.locator('[role="listitem"]');
-  const count = Math.min(await locator.count(), 500);
+  const locator = page.locator('[role="listitem"], [role="presentation"]');
+  const count = Math.min(await locator.count(), 800);
   const items = [];
   for (let index = 0; index < count; index += 1) {
     const item = locator.nth(index);
     if (!(await item.isVisible().catch(() => false))) continue;
     const box = await item.boundingBox().catch(() => null);
-    if (!box || box.x < 470) continue;
+    if (!box || box.x < 470 || box.width < 80 || box.height < 30) continue;
     items.push(item);
   }
   return items;
 }
 
-function emptyScheduledVerification(expectedTime) {
+function emptyScheduledVerification(expectedTime, queue = null) {
   return {
     found: false,
     ambiguous: false,
@@ -244,6 +303,7 @@ function emptyScheduledVerification(expectedTime) {
     expectedTime,
     match: null,
     matches: [],
+    queue,
   };
 }
 
@@ -252,12 +312,13 @@ export async function findScheduledContent(page, content, options = {}) {
     ? zonedTime(new Date(options.scheduleAt), options.timeZone || 'Europe/Kaliningrad')
     : null;
   const opened = await openScheduledMessages(page, { allowMissing: true });
-  if (opened.absent) return emptyScheduledVerification(expectedTime);
+  if (opened.absent) return emptyScheduledVerification(expectedTime, opened);
 
   const matches = [];
+  const exactText = normalizeText(content.text);
   for (const item of await visibleListItems(page)) {
     const bodyText = normalizeText(await item.innerText().catch(() => ''));
-    if (!bodyText.includes(normalizeText(content.text))) continue;
+    if (!bodyText.includes(exactText)) continue;
     if (expectedTime && !bodyText.includes(expectedTime)) continue;
     const structure = await contentMatchesContainer(item, content);
     if (!structure.matched) continue;
@@ -274,6 +335,7 @@ export async function findScheduledContent(page, content, options = {}) {
       structure: candidate.structure,
       box: candidate.box,
     })),
+    queue: opened,
   };
 }
 
