@@ -36,6 +36,18 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Apply MAX edit-submit selector compatibility
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const file = 'scripts/max-repair-published-post.mjs';
+          const source = fs.readFileSync(file, 'utf8');
+          const needle = "    || await firstVisible(page.locator('button[aria-label*=\"Сохран\" i], button[title*=\"Сохран\" i]'), 100);";
+          const replacement = `${needle.slice(0, -1)}\n    || await firstVisible(page.locator('button[aria-label=\"Отправить сообщение\"]'), 100);`;
+          if (!source.includes(needle)) throw new Error('MAX repair save-selector patch point was not found.');
+          fs.writeFileSync(file, source.replace(needle, replacement));
+          NODE
+
       - name: Validate repair source syntax
         run: |
           node --check scripts/max-command-contract.mjs
