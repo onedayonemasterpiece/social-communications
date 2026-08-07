@@ -8,12 +8,14 @@
 
 Исполнитель объединяет два источника:
 
-1. `config/max-destinations.public.json` — публичные адресаты, названия которых не являются конфиденциальными;
-2. repository secret `MAX_DESTINATIONS_JSON` — закрытые чаты, частные aliases и при необходимости переопределения.
+1. `config/social-destinations.public.json` — единый публичный реестр Telegram, VK и MAX;
+2. repository secret `MAX_DESTINATIONS_JSON` — закрытые MAX-чаты, частные aliases и при необходимости переопределения.
 
-Приватная запись с тем же `key` переопределяет `title` и `kind`, а aliases объединяются. В публичные логи выводятся только количества записей; содержимое secret не печатается.
+MAX loader берёт только секцию `platforms.max` из общего реестра. Приватная запись с тем же `key` переопределяет `title` и `kind`, а aliases объединяются. В публичные логи выводятся только количества записей; содержимое secret не печатается.
 
-## Зарегистрированные публичные каналы
+Полная межплатформенная карта описана в `docs/social-destination-registry.md`.
+
+## Зарегистрированные публичные каналы MAX
 
 | Logical key | Точное название в MAX | Тип |
 |---|---|---|
@@ -52,7 +54,7 @@ Alias должен быть достаточно специфичным, что�
 
 ## Проверка
 
-Workflow `.github/workflows/max-destination-smoke.yml` запускается при изменении публичного реестра или resolver-кода. Он:
+Workflow `.github/workflows/max-destination-smoke.yml` запускается при изменении общего публичного реестра или resolver-кода. Он:
 
 - восстанавливает `MAX_SESSION`;
 - по очереди разрешает зарегистрированные keys;
@@ -61,7 +63,7 @@ Workflow `.github/workflows/max-destination-smoke.yml` запускается п
 - ничего не печатает и не отправляет;
 - не создаёт screenshots или Actions artifacts.
 
-Финальная live-проверка актуального реестра: GitHub Actions run `31161216361`, результат `success`, оба адресата разрешены через `registry-key`.
+После миграции на общий реестр live-проверка GitHub Actions run `31171053152` завершилась `success`: оба MAX-адресата разрешены без открытия композера.
 
 Локально та же проверка запускается так:
 
