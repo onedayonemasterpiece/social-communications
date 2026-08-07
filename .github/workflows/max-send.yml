@@ -62,6 +62,7 @@ jobs:
           npm run max:session:syntax
           node --check scripts/max-wait-before-verify.mjs
           node --check scripts/max-publication-diagnostic.mjs
+          node --check scripts/max-semantic-final-verifier.mjs
           python -m py_compile scripts/generate_amber_combine_poster.py
 
       - name: Install dependencies
@@ -134,13 +135,19 @@ jobs:
           }
           NODE
 
-      - name: Inspect public MAX post and scheduled queue safely
+      - name: Verify MAX publication by semantic rich-post identity
+        id: semantic_verify
         if: always()
+        continue-on-error: true
+        run: node scripts/max-semantic-final-verifier.mjs
+
+      - name: Inspect public MAX post and scheduled queue safely
+        if: always() && steps.semantic_verify.outcome == 'failure'
         continue-on-error: true
         run: node scripts/max-publication-diagnostic.mjs
 
-      - name: Fail job when MAX sender failed
-        if: steps.max_send.outcome == 'failure'
+      - name: Fail job only when both MAX verifiers fail
+        if: steps.max_send.outcome == 'failure' && steps.semantic_verify.outcome == 'failure'
         run: exit 1
 
       - name: Upload short-lived cropped evidence
