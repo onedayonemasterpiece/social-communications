@@ -61,7 +61,7 @@ Workflow `.github/workflows/max-destination-smoke.yml` запускается п
 - ничего не печатает и не отправляет;
 - не создаёт screenshots или Actions artifacts.
 
-Первичная live-проверка: GitHub Actions run `31161071690`, результат `success`, оба адресата разрешены через `registry-key`.
+Финальная live-проверка актуального реестра: GitHub Actions run `31161216361`, результат `success`, оба адресата разрешены через `registry-key`.
 
 Локально та же проверка запускается так:
 
