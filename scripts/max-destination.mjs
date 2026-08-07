@@ -71,9 +71,7 @@ function similarity(query, title) {
   if (q === t) return 1;
   const lengthRatio = Math.min(q.length, t.length) / Math.max(q.length, t.length);
 
-  // A query that is a prefix of a longer candidate is strong evidence.
   if (t.startsWith(q)) return 0.92 + 0.07 * lengthRatio;
-  // A shorter candidate that is merely a prefix of the user's longer phrase is weaker.
   if (q.startsWith(t)) return 0.68 + 0.18 * lengthRatio;
   if (t.includes(q)) return 0.86 + 0.10 * lengthRatio;
   if (q.includes(t)) return 0.66 + 0.18 * lengthRatio;
@@ -135,6 +133,32 @@ function registryMatch(destination) {
   return null;
 }
 
+function searchVariants(query) {
+  const original = normalizeText(query);
+  const parts = canonical(query).split(' ').filter(Boolean);
+  const variants = [original];
+  const add = (value) => {
+    const normalized = normalizeText(value);
+    if (normalized && !variants.some((item) => canonical(item) === canonical(normalized))) variants.push(normalized);
+  };
+
+  // MAX search is prefix-friendly but not reliably typo-tolerant. Relax long tokens
+  // by one or two trailing characters, then let the independent title scorer decide.
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    const token = parts[index];
+    if (token.length < 5) continue;
+    for (let cut = 1; cut <= Math.min(2, token.length - 4); cut += 1) {
+      const copy = [...parts];
+      copy[index] = token.slice(0, -cut);
+      add(copy.join(' '));
+    }
+  }
+  if (parts.length > 1 && parts.at(-1).length > 4) {
+    add([...parts.slice(0, -1), parts.at(-1).slice(0, 4)].join(' '));
+  }
+  return variants.slice(0, 7);
+}
+
 async function buttonTitleLines(button) {
   return button.evaluate((element) => {
     const raw = element.innerText || element.textContent || '';
@@ -177,6 +201,24 @@ function maskedCandidates(scored) {
   }));
 }
 
+function scoreCandidates(candidates, originalQuery) {
+  return candidates
+    .map((candidate) => ({ ...candidate, score: similarity(originalQuery, candidate.title) }))
+    .sort((left, right) => right.score - left.score || left.index - right.index);
+}
+
+function uniqueStrongCandidate(scored, originalQuery) {
+  const top = scored[0];
+  const second = scored[1];
+  const threshold = canonical(originalQuery).length < 4 ? 0.97 : 0.84;
+  const margin = top ? top.score - (second?.score || 0) : 0;
+  return {
+    candidate: top && top.score >= threshold && (scored.length === 1 || margin >= 0.08) ? top : null,
+    topScore: top?.score || 0,
+    margin,
+  };
+}
+
 export async function resolveDestination(page, destination = {}) {
   const registered = registryMatch(destination);
   const exactTitle = normalizeText(registered?.title || destination.exactTitle || destination.title);
@@ -197,17 +239,16 @@ export async function resolveDestination(page, destination = {}) {
   ].join(',')));
   if (!search) throw new Error('MAX chat search input was not found.');
 
-  await search.fill(query);
-  await page.waitForTimeout(1_800);
-  const candidates = await visibleCandidates(page);
-  const scored = candidates
-    .map((candidate) => ({ ...candidate, score: similarity(query, candidate.title) }))
-    .sort((left, right) => right.score - left.score || left.index - right.index);
-
   let chosen = null;
+  let chosenScored = [];
+  let searchQueryUsed = query;
   let strategy = registered?.strategy || null;
+
   if (exactTitle) {
-    const exact = scored.filter((candidate) => canonical(candidate.title) === canonical(exactTitle));
+    await search.fill(exactTitle);
+    await page.waitForTimeout(1_800);
+    chosenScored = scoreCandidates(await visibleCandidates(page), exactTitle);
+    const exact = chosenScored.filter((candidate) => canonical(candidate.title) === canonical(exactTitle));
     if (exact.length === 1) {
       chosen = exact[0];
       strategy ||= 'exact-title';
@@ -215,23 +256,36 @@ export async function resolveDestination(page, destination = {}) {
       throw Object.assign(new Error(`Expected one visible MAX destination named «${exactTitle}», found ${exact.length}.`), {
         name: 'DestinationResolutionError',
         code: exact.length ? 'exact-title-ambiguous' : 'exact-title-not-found',
-        candidates: maskedCandidates(scored),
+        candidates: maskedCandidates(chosenScored),
       });
     }
   } else {
-    const top = scored[0];
-    const second = scored[1];
-    const threshold = canonical(query).length < 4 ? 0.97 : 0.84;
-    const margin = top ? top.score - (second?.score || 0) : 0;
-    const uniqueStrong = Boolean(top && top.score >= threshold && (scored.length === 1 || margin >= 0.08));
-    if (uniqueStrong) {
-      chosen = top;
-      strategy = 'deterministic-fuzzy';
-    } else {
+    let bestAttempt = { scored: [], topScore: 0, margin: 0, searchQuery: query };
+    for (const searchQuery of searchVariants(query)) {
+      await search.fill(searchQuery);
+      await page.waitForTimeout(1_500);
+      const scored = scoreCandidates(await visibleCandidates(page), query);
+      const selection = uniqueStrongCandidate(scored, query);
+      if (selection.topScore > bestAttempt.topScore
+        || (selection.topScore === bestAttempt.topScore && selection.margin > bestAttempt.margin)) {
+        bestAttempt = { scored, topScore: selection.topScore, margin: selection.margin, searchQuery };
+      }
+      if (selection.candidate) {
+        chosen = selection.candidate;
+        chosenScored = scored;
+        searchQueryUsed = searchQuery;
+        strategy = canonical(searchQuery) === canonical(query)
+          ? 'deterministic-fuzzy'
+          : 'deterministic-fuzzy-expanded';
+        break;
+      }
+    }
+    if (!chosen) {
       throw Object.assign(new Error(`MAX destination query «${query}» is not unambiguous enough for an automatic send.`), {
         name: 'DestinationResolutionError',
-        code: scored.length ? 'fuzzy-ambiguous' : 'fuzzy-not-found',
-        candidates: maskedCandidates(scored),
+        code: bestAttempt.scored.length ? 'fuzzy-ambiguous' : 'fuzzy-not-found',
+        candidates: maskedCandidates(bestAttempt.scored),
+        searchVariants: searchVariants(query),
       });
     }
   }
@@ -247,15 +301,16 @@ export async function resolveDestination(page, destination = {}) {
 
   return {
     query,
+    searchQueryUsed,
     title: chosen.title,
     kind: registered?.kind || normalizeText(destination.kind) || null,
     strategy,
     score: Number(chosen.score.toFixed(4)),
-    candidateCount: scored.length,
+    candidateCount: chosenScored.length,
     candidateIndex: chosen.index,
     candidateBox: chosen.box,
     url: page.url(),
-    alternatives: scored.slice(0, 5).map((item) => ({
+    alternatives: chosenScored.slice(0, 5).map((item) => ({
       titleHint: maskTitle(item.title),
       score: Number(item.score.toFixed(4)),
     })),
@@ -269,4 +324,4 @@ export function destinationForLegacyChat(chat = {}) {
   };
 }
 
-export const destinationMatching = { canonical, similarity };
+export const destinationMatching = { canonical, similarity, searchVariants };
