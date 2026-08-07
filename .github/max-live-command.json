@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "requestId": "max-test-rich-post-20260807-1",
+  "requestId": "max-test-rich-post-20260807-idempotency-check",
   "chat": {
     "title": "Тестовая группа"
   },
