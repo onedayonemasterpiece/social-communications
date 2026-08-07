@@ -25,6 +25,19 @@ const result = {
   target: null,
 };
 
+async function visibleContaining(locator, text) {
+  const matches = [];
+  const count = Math.min(await locator.count(), 100);
+  for (let index = 0; index < count; index += 1) {
+    const candidate = locator.nth(index);
+    if (!(await candidate.isVisible().catch(() => false))) continue;
+    const bodyText = normalizeText(await candidate.innerText().catch(() => ''));
+    if (!bodyText.includes(text)) continue;
+    matches.push(candidate);
+  }
+  return matches;
+}
+
 let runtime;
 try {
   runtime = await launchAuthenticatedMax();
@@ -38,15 +51,15 @@ try {
   await scheduledButton.click();
   await runtime.page.waitForTimeout(1_200);
 
-  const candidates = runtime.page.locator('[role="listitem"], [role="presentation"]').filter({ hasText: targetText });
-  const visibleCandidates = [];
-  const count = Math.min(await candidates.count(), 100);
-  for (let index = 0; index < count; index += 1) {
-    const candidate = candidates.nth(index);
-    if (!(await candidate.isVisible().catch(() => false))) continue;
-    const bodyText = normalizeText(await candidate.innerText().catch(() => ''));
-    if (!bodyText.includes(targetText)) continue;
-    visibleCandidates.push(candidate);
+  let visibleCandidates = await visibleContaining(
+    runtime.page.locator('[role="listitem"]').filter({ hasText: targetText }),
+    targetText,
+  );
+  if (visibleCandidates.length === 0) {
+    visibleCandidates = await visibleContaining(
+      runtime.page.locator('[role="presentation"]').filter({ hasText: targetText }),
+      targetText,
+    );
   }
   if (visibleCandidates.length !== 1) {
     throw new Error(`Expected one visible scheduled message containing target text, found ${visibleCandidates.length}.`);
