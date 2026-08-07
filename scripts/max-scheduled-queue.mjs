@@ -1,0 +1,243 @@
+import { launchAuthenticatedMax } from './max-runtime.mjs';
+import { contentMatchesContainer } from './max-composer.mjs';
+import { resolveDestination } from './max-destination.mjs';
+import { findSendButton, firstVisible, normalizeText } from './max-ui.mjs';
+
+const RUSSIAN_MONTHS = new Map([
+  ['Январь', 1], ['Февраль', 2], ['Март', 3], ['Апрель', 4], ['Май', 5], ['Июнь', 6],
+  ['Июль', 7], ['Август', 8], ['Сентябрь', 9], ['Октябрь', 10], ['Ноябрь', 11], ['Декабрь', 12],
+]);
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function zonedParts(date, timeZone) {
+  const formatter = new Intl.DateTimeFormat('ru-RU', {
+    timeZone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
+  const parts = Object.fromEntries(
+    formatter.formatToParts(date)
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, part.value]),
+  );
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+  };
+}
+
+export function zonedTime(date, timeZone) {
+  const parts = zonedParts(date, timeZone);
+  return `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`;
+}
+
+export function defaultParkingTimestamp() {
+  const date = new Date(Date.now() + 30 * 24 * 60 * 60 * 1_000);
+  date.setUTCSeconds(0, 0);
+  return date.toISOString();
+}
+
+async function chooseCalendarMonth(page, target) {
+  const monthPattern = /^(Январь|Февраль|Март|Апрель|Май|Июнь|Июль|Август|Сентябрь|Октябрь|Ноябрь|Декабрь)\s+(\d{4})$/;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const title = await firstVisible(page.getByText(monthPattern), 50);
+    if (!title) throw new Error('MAX schedule month title was not found.');
+    const text = normalizeText(await title.innerText());
+    const match = text.match(monthPattern);
+    if (!match) throw new Error(`Cannot parse MAX schedule month title: ${text}`);
+    const current = { month: RUSSIAN_MONTHS.get(match[1]), year: Number(match[2]) };
+    const currentIndex = current.year * 12 + current.month;
+    const targetIndex = target.year * 12 + target.month;
+    if (currentIndex === targetIndex) return text;
+    const direction = targetIndex > currentIndex ? 'Следующий месяц' : 'Предыдущий месяц';
+    await page.getByRole('button', { name: direction, exact: true }).click();
+    await page.waitForTimeout(350);
+  }
+  throw new Error('MAX schedule month navigation exceeded 30 steps.');
+}
+
+async function setSpinbutton(page, label, value) {
+  const expected = String(value).padStart(2, '0');
+  const spin = page.getByRole('spinbutton', { name: label, exact: true });
+  await spin.waitFor({ state: 'visible' });
+  await spin.click();
+  await spin.press('Control+A').catch(() => {});
+  await spin.pressSequentially(expected, { delay: 80 });
+  await page.waitForTimeout(300);
+  const actual = normalizeText(await spin.textContent());
+  if (actual !== expected) throw new Error(`MAX ${label} spinbutton expected ${expected}, received ${actual}.`);
+}
+
+export async function schedulePreparedComposer(page, scheduleAt, timeZone = 'Europe/Kaliningrad') {
+  const scheduleDate = scheduleAt instanceof Date ? scheduleAt : new Date(scheduleAt);
+  if (Number.isNaN(scheduleDate.getTime())) throw new Error(`Invalid MAX schedule timestamp: ${scheduleAt}.`);
+  if (scheduleDate.getTime() < Date.now() + 60_000) {
+    throw new Error('MAX schedule timestamp must be at least one minute in the future.');
+  }
+  const target = zonedParts(scheduleDate, timeZone);
+  const send = await findSendButton(page);
+  await send.click({ button: 'right' });
+  const menuItem = page.getByRole('menuitem', { name: 'Отправить позже', exact: true });
+  await menuItem.waitFor({ state: 'visible' });
+  await menuItem.click();
+
+  const monthTitle = await chooseCalendarMonth(page, target);
+  const day = page
+    .locator('button.day:not(.day--otherMonth):not(.day--disabled)')
+    .filter({ hasText: new RegExp(`^${target.day}$`) });
+  if (await day.count() !== 1) {
+    throw new Error(`Expected exactly one selectable MAX calendar day ${target.day}, found ${await day.count()}.`);
+  }
+  await day.click();
+  await setSpinbutton(page, 'Часы', target.hour);
+  await setSpinbutton(page, 'Минуты', target.minute);
+
+  const expectedTime = `${String(target.hour).padStart(2, '0')}:${String(target.minute).padStart(2, '0')}`;
+  const confirm = page.getByRole('button', {
+    name: new RegExp(`^Отправить .+ в ${escapeRegex(expectedTime)}$`),
+  });
+  await confirm.waitFor({ state: 'visible' });
+  const confirmationText = normalizeText(await confirm.innerText());
+  if (!confirmationText.includes(expectedTime)) {
+    throw new Error(`MAX schedule confirmation does not contain ${expectedTime}: ${confirmationText}`);
+  }
+  await confirm.click();
+  await confirm.waitFor({ state: 'hidden', timeout: 15_000 }).catch(() => {});
+  await page.waitForTimeout(1_500);
+  const dialogStillVisible = await page.getByText('Отправить позже', { exact: true }).isVisible().catch(() => false);
+  if (dialogStillVisible) throw new Error('MAX schedule dialog remained visible after confirmation.');
+
+  return {
+    scheduleAt: scheduleDate.toISOString(),
+    timeZone,
+    target,
+    expectedTime,
+    monthTitle,
+    confirmationText,
+  };
+}
+
+export async function openScheduledMessages(page) {
+  const existingTitle = await firstVisible(page.getByText('Отложенные сообщения', { exact: true }), 20);
+  if (existingTitle) return { alreadyOpen: true };
+  const scheduledButton = await firstVisible(page.locator([
+    'button[aria-label="Открыть отложенные сообщения"]',
+    'button[aria-label*="отложенные сообщения" i]',
+  ].join(',')));
+  if (!scheduledButton) throw new Error('MAX scheduled-messages button was not found.');
+  await scheduledButton.click();
+  await page.waitForTimeout(1_200);
+  const title = await firstVisible(page.getByText('Отложенные сообщения', { exact: true }), 50);
+  if (!title) throw new Error('MAX scheduled-messages view did not open.');
+  return { alreadyOpen: false };
+}
+
+async function visibleListItems(page) {
+  const locator = page.locator('[role="listitem"]');
+  const count = Math.min(await locator.count(), 500);
+  const items = [];
+  for (let index = 0; index < count; index += 1) {
+    const item = locator.nth(index);
+    if (!(await item.isVisible().catch(() => false))) continue;
+    const box = await item.boundingBox().catch(() => null);
+    if (!box || box.x < 470) continue;
+    items.push(item);
+  }
+  return items;
+}
+
+export async function findScheduledContent(page, content, options = {}) {
+  await openScheduledMessages(page);
+  const expectedTime = options.scheduleAt
+    ? zonedTime(new Date(options.scheduleAt), options.timeZone || 'Europe/Kaliningrad')
+    : null;
+  const matches = [];
+  for (const item of await visibleListItems(page)) {
+    const bodyText = normalizeText(await item.innerText().catch(() => ''));
+    if (!bodyText.includes(normalizeText(content.text))) continue;
+    if (expectedTime && !bodyText.includes(expectedTime)) continue;
+    const structure = await contentMatchesContainer(item, content);
+    if (!structure.matched) continue;
+    matches.push({ item, bodyText, structure, box: await item.boundingBox() });
+  }
+  return {
+    found: matches.length === 1,
+    ambiguous: matches.length > 1,
+    count: matches.length,
+    expectedTime,
+    match: matches.length === 1 ? matches[0] : null,
+    matches: matches.map((candidate) => ({
+      bodyText: candidate.bodyText.slice(0, 1_000),
+      structure: candidate.structure,
+      box: candidate.box,
+    })),
+  };
+}
+
+export async function sendScheduledNow(page, scheduledMatch) {
+  const item = scheduledMatch?.item;
+  if (!item) throw new Error('MAX sendScheduledNow requires a unique scheduled message locator.');
+  await item.click({ button: 'right' });
+  const menuItem = page.getByRole('menuitem', { name: 'Отправить сейчас', exact: true });
+  await menuItem.waitFor({ state: 'visible' });
+  await menuItem.click();
+  await page.waitForTimeout(2_000);
+  if (await item.isVisible().catch(() => false)) {
+    throw new Error('MAX scheduled message remained visible after «Отправить сейчас».');
+  }
+  return { sentNow: true };
+}
+
+export async function deleteScheduledMessage(page, scheduledMatch) {
+  const item = scheduledMatch?.item;
+  if (!item) return { deleted: false, reason: 'scheduled-item-absent' };
+  try {
+    await item.click({ button: 'right' });
+    const deleteItem = page.getByRole('menuitem', { name: 'Удалить', exact: true });
+    await deleteItem.waitFor({ state: 'visible', timeout: 5_000 });
+    await deleteItem.click();
+    await page.waitForTimeout(500);
+    const confirm = await firstVisible(page.getByRole('button', { name: 'Удалить', exact: true }), 20);
+    if (confirm) await confirm.click();
+    await page.waitForTimeout(1_000);
+    return {
+      deleted: !(await item.isVisible().catch(() => false)),
+      reason: 'delete-menu-completed',
+    };
+  } catch (error) {
+    return { deleted: false, reason: String(error?.message || error) };
+  }
+}
+
+export async function verifyScheduledWithFreshSession(command, resolvedTitle, scheduleAt) {
+  let runtime;
+  try {
+    runtime = await launchAuthenticatedMax({ timezoneId: command.delivery.timeZone });
+    const destination = await resolveDestination(runtime.page, {
+      exactTitle: resolvedTitle,
+      kind: command.destination.kind,
+    });
+    const verification = await findScheduledContent(runtime.page, command.content, {
+      scheduleAt,
+      timeZone: command.delivery.timeZone,
+    });
+    return {
+      ...verification,
+      destination,
+      session: runtime.session.counts,
+    };
+  } finally {
+    if (runtime?.context) await runtime.context.close().catch(() => {});
+    if (runtime?.browser) await runtime.browser.close().catch(() => {});
+  }
+}
