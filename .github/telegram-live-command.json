@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "request_id": "sc-test-announcements-telegram-20260807-2100-verify-1",
+  "request_id": "sc-test-announcements-telegram-20260807-2100-verify-2",
   "platform": "telegram",
   "operation": "verify",
   "destination": "polubit-kaliningrad-anonsy",
