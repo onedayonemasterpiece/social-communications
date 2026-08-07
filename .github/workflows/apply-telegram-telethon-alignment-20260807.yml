@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --disable-pip-version-check 'telethon==1.40.0'
+          python -m pip install --disable-pip-version-check 'telethon==1.40.0' 'requests==2.32.5'
           python -m py_compile scripts/social_registry.py scripts/telegram_publish.py scripts/vk_publish.py
           python -m unittest discover -s tests -p 'test_*.py'
 
