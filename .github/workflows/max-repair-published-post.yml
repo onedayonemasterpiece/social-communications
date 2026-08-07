@@ -48,9 +48,7 @@ jobs:
           if (!source.includes(saveNeedle)) throw new Error('MAX repair save-selector patch point was not found.');
           source = source.replace(saveNeedle, saveReplacement);
 
-          const verifyNeedle = `  const finalHasParagraphs = finalStructure.doubleBreakCount >= expectedBlocks - 1
-            || finalStructure.blockChildren >= expectedBlocks
-            || finalStructure.paragraphs >= expectedBlocks;`;
+          const verifyPattern = /  const finalHasParagraphs = finalStructure\.doubleBreakCount >= expectedBlocks - 1\s*\|\| finalStructure\.blockChildren >= expectedBlocks\s*\|\| finalStructure\.paragraphs >= expectedBlocks;/;
           const verifyReplacement = `  const finalVisualBlankLines = finalStructure.rawText
             .split('\\n')
             .filter((line) => line.includes('\\u2800')).length;
@@ -58,8 +56,8 @@ jobs:
             || finalStructure.doubleBreakCount >= expectedBlocks - 1
             || finalStructure.blockChildren >= expectedBlocks
             || finalStructure.paragraphs >= expectedBlocks;`;
-          if (!source.includes(verifyNeedle)) throw new Error('MAX repair final-verification patch point was not found.');
-          source = source.replace(verifyNeedle, verifyReplacement);
+          if (!verifyPattern.test(source)) throw new Error('MAX repair final-verification patch point was not found.');
+          source = source.replace(verifyPattern, verifyReplacement);
 
           fs.writeFileSync(file, source);
           NODE
