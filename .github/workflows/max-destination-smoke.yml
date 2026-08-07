@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - config/max-destinations.public.json
+      - config/social-destinations.public.json
       - scripts/max-destination-registry-env.mjs
       - scripts/max-destination-smoke.mjs
       - scripts/max-destination.mjs
@@ -41,6 +41,8 @@ jobs:
           [[ -n "${MAX_SESSION:-}" ]] || { echo "::error::Repository secret MAX_SESSION is absent."; exit 1; }
 
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
