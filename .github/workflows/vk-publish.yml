@@ -1,0 +1,120 @@
+name: VK deterministic publisher
+run-name: VK publisher — ${{ github.event_name }}
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/vk-live-command.json
+  workflow_dispatch:
+    inputs:
+      command_json:
+        description: Full Social Communications command JSON for platform=vk
+        required: true
+        type: string
+
+concurrency:
+  group: social-communications-vk-writes
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      VK_ACCESS_TOKEN5: ${{ secrets.VK_ACCESS_TOKEN5 }}
+      SOCIAL_COMMAND_JSON: ${{ github.event.inputs.command_json }}
+    steps:
+      - name: Verify credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${VK_ACCESS_TOKEN5:-}" ]] || {
+            echo "::error::Repository secret VK_ACCESS_TOKEN5 is absent."
+            exit 1
+          }
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned runtime dependency
+        run: python -m pip install --disable-pip-version-check 'requests==2.32.5'
+
+      - name: Validate sources and registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/social_registry.py scripts/vk_publish.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for path in (
+              Path('config/social-destinations.public.json'),
+              Path('contracts/social-command.schema.json'),
+          ):
+              json.loads(path.read_text(encoding='utf-8'))
+              print(f'VALID_JSON={path}')
+          PY
+          python scripts/social_registry.py >/dev/null
+
+      - name: Select command without logging its contents
+        id: command
+        shell: bash
+        run: |
+          set -euo pipefail
+          command_path="${RUNNER_TEMP}/vk-command.json"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            [[ -n "${SOCIAL_COMMAND_JSON:-}" ]] || {
+              echo "::error::command_json is empty."
+              exit 1
+            }
+            printf '%s' "${SOCIAL_COMMAND_JSON}" > "${command_path}"
+          else
+            cp .github/vk-live-command.json "${command_path}"
+          fi
+          chmod 600 "${command_path}"
+          echo "path=${command_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Generate deterministic private test image
+        run: node scripts/max-generate-test-image.mjs generated/social-test-post.png
+
+      - name: Publish or verify VK command
+        id: publish
+        shell: bash
+        env:
+          COMMAND_PATH: ${{ steps.command.outputs.path }}
+        run: |
+          set -euo pipefail
+          receipt="${RUNNER_TEMP}/vk-receipt.json"
+          python scripts/vk_publish.py --command "${COMMAND_PATH}" --receipt "${receipt}"
+          python - "${receipt}" <<'PY' >> "${GITHUB_STEP_SUMMARY}"
+          import json
+          import sys
+          from pathlib import Path
+          receipt = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+          print('### VK publication receipt')
+          print()
+          print(f"- status: `{receipt['status']}`")
+          print(f"- request: `{receipt['request_id']}`")
+          print(f"- destination: `{receipt['destination_key']}`")
+          print(f"- community: `{receipt['community']['screen_name']}` (`{receipt['community']['group_id']}`)")
+          print(f"- post id: `{receipt['post_id']}`")
+          if receipt.get('scheduled_at'):
+              print(f"- scheduled at: `{receipt['scheduled_at']}`")
+          print(f"- attachments: `{','.join(receipt.get('attachment_types') or [])}`")
+          PY
+
+      - name: Remove private runtime files
+        if: always()
+        shell: bash
+        run: |
+          rm -f "${RUNNER_TEMP}/vk-command.json" "${RUNNER_TEMP}/vk-receipt.json"
+          rm -rf generated
