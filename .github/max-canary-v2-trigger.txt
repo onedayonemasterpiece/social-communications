@@ -1,2 +1,3 @@
 send=Привет мир
-requested_at=2026-08-07T03:24:10Z
+requested_at=2026-08-07T03:26:30Z
+attempt=2
