@@ -1,0 +1,52 @@
+name: Repository maintenance
+run-name: Repository maintenance
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/actions-maintenance-trigger.txt
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  clean-actions-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPOSITORY: ${{ github.repository }}
+      TARGET_RUN_IDS: "31126720339 31126874221 31127955469 31144194856 31144248985 31144332689"
+    steps:
+      - name: Force-cancel and delete obsolete workflow runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for run_id in $TARGET_RUN_IDS; do
+            echo "Processing run ${run_id}"
+            if ! gh api "repos/${REPOSITORY}/actions/runs/${run_id}" >/tmp/run.json 2>/tmp/get.err; then
+              if grep -q 'HTTP 404' /tmp/get.err; then
+                echo "Run ${run_id} already absent"
+                continue
+              fi
+              cat /tmp/get.err >&2
+              exit 1
+            fi
+
+            status="$(jq -r '.status' /tmp/run.json)"
+            if [[ "$status" != "completed" ]]; then
+              gh api --method POST "repos/${REPOSITORY}/actions/runs/${run_id}/force-cancel" >/dev/null || true
+              for _ in $(seq 1 30); do
+                sleep 2
+                status="$(gh api "repos/${REPOSITORY}/actions/runs/${run_id}" --jq '.status' 2>/dev/null || echo absent)"
+                [[ "$status" == "completed" || "$status" == "absent" ]] && break
+              done
+            fi
+
+            gh api --method DELETE "repos/${REPOSITORY}/actions/runs/${run_id}" >/dev/null
+            echo "Deleted run ${run_id}"
+          done
