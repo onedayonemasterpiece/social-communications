@@ -1,0 +1,65 @@
+name: MAX Web canary v2
+run-name: MAX Web canary v2 — ${{ github.event_name }}
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/max-canary-v2-trigger.txt
+  workflow_dispatch:
+    inputs:
+      message:
+        description: Exact text to send to «Избранное»
+        required: false
+        default: Привет мир
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  send-to-saved:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MAX_SESSION: ${{ secrets.max_session || secrets.MAX_SESSION }}
+      MAX_MESSAGE: ${{ github.event.inputs.message || 'Привет мир' }}
+      MAX_ARTIFACT_DIR: artifacts/max-web
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify session secret is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${MAX_SESSION:-}" ]]; then
+            echo "::error::Repository secret max_session is missing or unavailable to this workflow."
+            exit 1
+          fi
+          echo "MAX_SESSION_AVAILABLE=1"
+
+      - name: Open MAX Web and send canary message
+        run: npm run max:canary
+
+      - name: Upload short-lived Playwright evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: max-web-canary-v2-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/max-web
+          if-no-files-found: error
+          retention-days: 1
