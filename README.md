@@ -1,74 +1,129 @@
 # Social Communications
 
-Автоматизированные сценарии работы с публичными веб-интерфейсами социальных платформ.
+Единый репозиторий для детерминированной работы с MAX, Telegram и VK: найти проверенный адресат, подготовить готовый материал, поставить публикацию в отложку или отправить сейчас, а затем независимо проверить результат.
+
+## Единый реестр адресатов
+
+Канонический публичный реестр:
+
+```text
+config/social-destinations.public.json
+```
+
+В нём зарегистрированы:
+
+- `polubit-kaliningrad-afisha` — Telegram `@kldevents`, VK `klgdevents`;
+- `polubit-kaliningrad-anonsy` — Telegram `@kenigevents`, VK `kenigeventsofficial`, MAX;
+- `uh-ty-kaliningrad` — VK `uhtykaliningrad`, MAX и точный Telegram dialog title до подтверждения username;
+- `polubit-kaliningrad` — Telegram `@lovekenig`.
+
+Пользователь может назвать адресат разговорно или с небольшой опечаткой. Ассистент переводит формулировку в stable key, но commit-path остаётся детерминированным: исполнитель проверяет фактический username, community id или точный заголовок и требует ровно одного адресата.
+
+Подробнее: [`docs/social-destination-registry.md`](docs/social-destination-registry.md).
+
+## Credentials
+
+Минимальный комплект repository secrets:
+
+| Платформа | Secret |
+|---|---|
+| MAX | `MAX_SESSION` |
+| Telegram | `TELEGRAM_AUTH_BUNDLE_GH_ACTIONS` |
+| VK | `VK_ACCESS_TOKEN5` |
+
+Telegram bundle должен содержать `api_id`, `api_hash`, `session` и при наличии стабильные device-поля. Отдельные Telegram API secrets не требуются. Текущий bundle пока содержит session/device identity без `api_id` и `api_hash`, поэтому Telegram write-path блокируется до дополнения того же secret.
 
 ## MAX Web
 
-Репозиторий содержит воспроизводимый Playwright-контур для официальной веб-версии MAX.
+Воспроизводимый Playwright-контур для официальной веб-версии MAX поддерживает:
 
-Поддержаны:
-
-- адресация по стабильному key, точному названию либо неточному запросу;
+- адресацию по stable key, точному названию либо неточному запросу;
 - fail-closed разрешение чатов, групп и каналов без выбора первого похожего результата;
-- безопасная немедленная отправка через `Отложенные сообщения → Отправить сейчас`;
-- нативная отправка в заданное время;
+- безопасную немедленную отправку через `Отложенные сообщения → Отправить сейчас`;
+- нативную отправку в заданное время;
 - режим `stage_only` для подготовки и проверки без доставки;
 - текст, изображение, подпись и форматированные HTTPS-ссылки;
-- атомарная вставка готового текста через Clipboard API вместо последовательного набора;
-- свежая независимая проверка после commit-point;
-- защита от повторной отправки уже найденного материала;
-- диагностические artifacts с обязательным удалением после анализа.
-
-Архитектура, правила адресации, границы гарантий и примеры команд: [`docs/max-messenger-automation.md`](docs/max-messenger-automation.md).
-
-Реестр часто используемых адресатов: [`docs/max-destination-registry.md`](docs/max-destination-registry.md).
-
-Командный контракт version 2 и совместимость с version 1: [`contracts/max-command.schema.json`](contracts/max-command.schema.json).
+- атомарную вставку готового текста через Clipboard API;
+- независимую проверку после commit-point;
+- защиту от повторной отправки.
 
 Основной workflow: [`.github/workflows/max-send.yml`](.github/workflows/max-send.yml).
 
-## Семантика и исполнение
+Архитектура: [`docs/max-messenger-automation.md`](docs/max-messenger-automation.md).
 
-Задачу можно поставить ассистенту естественным языком, в том числе неточно назвать адресата. Ассистент нормализует intent и использует контекст разговора. Опасные действия остаются детерминированными: браузерный исполнитель самостоятельно подтверждает единственного адресата и не делегирует LLM выбор DOM-элемента или кнопку отправки.
+MAX-проекция общего реестра: [`docs/max-destination-registry.md`](docs/max-destination-registry.md).
 
-Публичные часто используемые адресаты хранятся в `config/max-destinations.public.json`. Сейчас зарегистрированы и проверены в живом MAX:
+Командный контракт MAX version 2: [`contracts/max-command.schema.json`](contracts/max-command.schema.json).
 
-- `polubit-kaliningrad-anonsy` → канал `Полюбить Калининград Анонсы`;
-- `uh-ty-kaliningrad` → канал `Ух ты, Калининград!`.
-
-Для закрытых адресатов предусмотрен необязательный repository secret `MAX_DESTINATIONS_JSON` с private aliases и стабильными logical keys. При запуске публичный и приватный реестры объединяются; точные названия закрытых чатов не требуется хранить в публичном Git.
-
-## Невидимая подготовка
+### Невидимая подготовка
 
 Для `delivery.mode=send_now` обычная прямая отправка не используется. Содержимое предварительно валидируется, атомарно помещается в композер, создаётся как нативное отложенное сообщение, проверяется в списке отложенных и только затем переводится в опубликованное через `Отправить сейчас`.
 
-Live-тест доказал, что до commit-point объект находится только в sender-side разделе `Отложенные сообщения` и отсутствует в основном чате. При этом тестовая группа состояла из одного участника, поэтому отсутствие recipient-side push/message-notification и индикатора `печатает…` ещё не подтверждено наблюдением со второго аккаунта. Атомарная paste-операция и отсутствие итерационного сочинения в открытом композере минимизируют это окно, но не подменяют такой тест.
+Live-тест доказал отсутствие промежуточного сообщения в основной ленте до commit-point. Отсутствие recipient-side typing/push signals всё ещё требует отдельной двухсторонней проверки со вторым аккаунтом.
 
-## Сохранённая сессия
+### Сохранённая MAX-сессия
 
-Workflow читает repository secret `MAX_SESSION`.
-
-Предпочтительное значение:
+Предпочтительное значение `MAX_SESSION`:
 
 ```text
 MAX_SESSION_V2_GZIP_BASE64=...
 ```
 
-Префикс является частью значения `MAX_SESSION`, а не отдельным именем GitHub Secret. Сессия должна восстанавливать авторизованный `https://web.max.ru/` в новом изолированном browser context.
+Префикс является частью значения, а не именем отдельного secret. Сессия должна восстанавливать авторизованный `https://web.max.ru/` в новом browser context.
 
 Экспорт из уже авторизованной вкладки:
 
 1. открыть `https://web.max.ru/`;
 2. открыть DevTools → Sources → Snippets;
 3. выполнить `scripts/max-session-export-console.js`;
-4. сохранить полное содержимое скачанного `max_session-*.txt` в repository secret `MAX_SESSION`.
+4. сохранить полное содержимое `max_session-*.txt` в `MAX_SESSION`.
 
-Эталонный локальный захват Playwright:
+## Telegram
 
-```bash
-npm install
-npx playwright install chromium
-npm run max:session:capture
+Workflow:
+
+```text
+.github/workflows/telegram-publish.yml
 ```
 
-Файлы сессии создаются только в `.private/`, исключённом из Git.
+Исполнитель:
+
+```text
+scripts/telegram_publish.py
+```
+
+Поддержаны `schedule_post`, `publish_now` и `verify` для PNG + caption. Перед отправкой проверяются авторизация, точный channel identity, broadcast type, право `post_messages`, idempotency marker и существующие scheduled messages. GitHub Actions сериализует все обращения к `TELEGRAM_AUTH_BUNDLE_GH_ACTIONS`, чтобы одна StringSession не использовалась параллельно внутри репозитория.
+
+## VK
+
+Workflow:
+
+```text
+.github/workflows/vk-publish.yml
+```
+
+Исполнитель:
+
+```text
+scripts/vk_publish.py
+```
+
+Поддержаны `schedule_post`, `publish_now` и `verify` для PNG + текста. Перед commit проверяются точные `group_id`, `screen_name`, title, `is_admin=1`, `admin_level>=2` и postponed queue по marker. Загрузка изображения идёт через `photos.getWallUploadServer` → `photos.saveWallPhoto`, публикация — через `wall.post`, затем выполняется независимый `wall.get(filter=postponed)`.
+
+7 августа 2026 года live-run поставил тестовый PNG-пост в `Полюбить Калининград Анонсы` (`kenigeventsofficial`, group `231828790`) на 21:00 Europe/Kaliningrad. Отдельный verify-run подтвердил тот же post id, время и photo attachment без повторной загрузки.
+
+Общая документация Telegram/VK: [`docs/telegram-vk-automation.md`](docs/telegram-vk-automation.md).
+
+Общий command schema: [`contracts/social-command.schema.json`](contracts/social-command.schema.json).
+
+## LLM-граница
+
+LLM может помочь только на смысловом уровне: понять пользовательскую формулировку, выбрать logical key, подготовить финальный текст и предложить поисковые варианты при диагностике. LLM не получает credentials и не выбирает DOM/API commit operation.
+
+Опасные действия выполняются только детерминированными адаптерами с точной проверкой адресата и прав. При неоднозначности операция блокируется либо запрашивает одно уточнение.
+
+## Privacy и evidence
+
+Обычные Telegram/VK workflows не создают Actions artifacts вообще. Command, receipt и generated test image удаляются с runner после выполнения. В логах остаётся только минимальный публичный receipt: status, request id, destination key, публичный channel/community identifier, post/message id, scheduled time и media type.
+
+MAX diagnostics допускают краткоживущие screenshots/DOM только по явному opt-in. После анализа artifacts должны быть удалены; постоянное публичное хранение личного интерфейса запрещено.
