@@ -1,0 +1,3 @@
+requested_at=2026-08-07T06:21:00Z
+artifact_ids=8984109090
+reason=first MAX UI inspection analyzed
