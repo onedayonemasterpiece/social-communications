@@ -1,39 +1,44 @@
 # Social Communications
 
-Автоматизированные проверки и сценарии работы с публичными веб-интерфейсами социальных платформ.
+Автоматизированные сценарии работы с публичными веб-интерфейсами социальных платформ.
 
-## MAX Web canary
+## MAX Web
 
-Workflow `.github/workflows/max-web-canary-v2.yml` использует Playwright, открывает официальную веб-версию MAX, находит чат «Избранное», идемпотентно отправляет тестовое сообщение и сохраняет диагностические артефакты GitHub Actions на один день.
+Репозиторий содержит детерминированный Playwright-контур для официальной веб-версии MAX:
 
-Секрет, необработанные значения browser storage и токены в репозиторий и логи не записываются.
+- выбор разных чатов по единственному точному названию;
+- немедленная отправка текста;
+- нативная отложенная отправка;
+- изображение с подписью и форматированными HTTPS-ссылками;
+- независимая проверка результата и защита от дублей;
+- короткоживущие диагностические артефакты с последующим удалением.
 
-## Контракт сохранённой сессии
+Основная документация: [`docs/max-messenger-automation.md`](docs/max-messenger-automation.md).
 
-Workflow читает только repository secret `MAX_SESSION`. Он должен содержать воспроизводимое состояние авторизованного браузера:
+Командный контракт: [`contracts/max-command.schema.json`](contracts/max-command.schema.json).
 
-- cookies, включая HttpOnly при захвате Playwright;
-- localStorage;
-- IndexedDB;
-- sessionStorage;
-- origin `https://web.max.ru`.
+Основной workflow: [`.github/workflows/max-send.yml`](.github/workflows/max-send.yml).
 
-Предпочтительный формат — `max-session-v2`, сжатый в строку с префиксом `MAX_SESSION_V2_GZIP_BASE64=`. Префикс является частью значения `MAX_SESSION`, а не отдельным именем GitHub Secret. Также поддерживается полный Playwright `storageState` JSON.
+## Сохранённая сессия
 
-Старый снимок вида `{"cookies": [], "local_storage": ..., "session_storage": ...}` без cookies и IndexedDB не считается авторизованной сессией: он сохраняет настройки интерфейса, но не даёт воспроизводимого входа. Canary отклоняет такой снимок до запуска Chromium.
+Workflow читает только repository secret `MAX_SESSION`.
 
-## Экспорт из уже авторизованной вкладки MAX
+Предпочтительное значение:
 
-1. Открыть авторизованную вкладку `https://web.max.ru/` в Chrome или Edge.
-2. Открыть DevTools → Sources → Snippets.
-3. Создать snippet, вставить содержимое `scripts/max-session-export-console.js` и запустить.
-4. Скрипт скачает `max_session-*.txt` и резервный JSON. Полное содержимое `.txt` сохранить в repository secret `MAX_SESSION`.
+```text
+MAX_SESSION_V2_GZIP_BASE64=...
+```
 
-Экспорт включает IndexedDB, сжимает результат и сообщает, помещается ли он в лимит GitHub repository secret. Значения storage в консоль не печатаются.
+Префикс является частью значения `MAX_SESSION`, а не отдельным именем GitHub Secret. Сессия должна восстанавливать авторизованный `https://web.max.ru/` в новом изолированном browser context.
 
-## Строго проверенный локальный захват Playwright
+Экспорт из уже авторизованной вкладки:
 
-Это эталонный путь для новой сессии или когда браузерный экспорт не восстанавливает вход:
+1. открыть `https://web.max.ru/`;
+2. открыть DevTools → Sources → Snippets;
+3. выполнить `scripts/max-session-export-console.js`;
+4. сохранить полное содержимое скачанного `max_session-*.txt` в repository secret `MAX_SESSION`.
+
+Эталонный локальный захват Playwright:
 
 ```bash
 npm install
@@ -41,14 +46,4 @@ npx playwright install chromium
 npm run max:session:capture
 ```
 
-Команда открывает отдельный постоянный профиль Chromium в `.private/max-playwright-profile`, ждёт авторизации, захватывает cookies, localStorage и IndexedDB через Playwright, затем загружает снимок в новый изолированный browser context. Файл секрета создаётся только после успешной проверки, что новый контекст открывает MAX без экрана входа.
-
-Результат:
-
-```text
-.private/max-session/max_session.txt
-.private/max-session/max_session.json
-.private/max-session/receipt.json
-```
-
-Каталог `.private/` исключён из Git.
+Файлы сессии создаются только в `.private/`, который исключён из Git.
