@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "requestId": "sc-amber-combine-20260807-2230-retry3:max",
+  "requestId": "sc-amber-combine-20260807-2245-retry4:max",
   "destination": {
     "key": "polubit-kaliningrad-anonsy",
     "kind": "channel"
@@ -20,7 +20,7 @@
   },
   "delivery": {
     "mode": "schedule_at",
-    "scheduleAt": "2026-08-07T22:30:00+02:00",
+    "scheduleAt": "2026-08-07T22:45:00+02:00",
     "timeZone": "Europe/Kaliningrad",
     "recipientInvisiblePreparation": true,
     "reuseExistingStage": true
