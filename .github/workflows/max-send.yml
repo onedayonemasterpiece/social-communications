@@ -63,11 +63,33 @@ jobs:
           node --check scripts/max-wait-before-verify.mjs
           node --check scripts/max-publication-diagnostic.mjs
           node --check scripts/max-semantic-final-verifier.mjs
-          node --check scripts/max-final-message-probe.mjs
           python -m py_compile scripts/generate_amber_combine_poster.py
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+
+      - name: Verify MAX visual blank-line payload
+        run: |
+          node --input-type=module - <<'NODE'
+          import {
+            MAX_VISUAL_BLANK_LINE,
+            richCaptionClipboardPayload,
+          } from './scripts/max-composer.mjs';
+
+          const payload = richCaptionClipboardPayload({
+            text: 'Первый абзац.\n\nВторой абзац.\n\nСтрока 1\nСтрока 2',
+            links: [{ text: 'Кнопка', url: 'https://example.com/' }],
+          });
+          const expectedSeparators = 3;
+          const plainSeparators = payload.plainText.split(MAX_VISUAL_BLANK_LINE).length - 1;
+          const htmlSeparators = payload.html.split(`<p>${MAX_VISUAL_BLANK_LINE}</p>`).length - 1;
+          if (plainSeparators !== expectedSeparators || htmlSeparators !== expectedSeparators) {
+            throw new Error(`MAX blank-line payload drift: plain=${plainSeparators} html=${htmlSeparators}`);
+          }
+          if (!payload.html.includes('Строка 1<br>Строка 2')) {
+            throw new Error('MAX single-line breaks inside a paragraph were not preserved.');
+          }
+          NODE
 
       - name: Generate private deterministic test image
         run: npm run max:test-image
@@ -141,12 +163,6 @@ jobs:
         if: always()
         continue-on-error: true
         run: node scripts/max-semantic-final-verifier.mjs
-
-      - name: Inspect exact MAX message formatting and edit controls safely
-        id: format_probe
-        if: always()
-        continue-on-error: true
-        run: node scripts/max-final-message-probe.mjs
 
       - name: Inspect public MAX post and scheduled queue safely
         if: always() && steps.semantic_verify.outcome == 'failure'
