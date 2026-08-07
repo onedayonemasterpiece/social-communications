@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "updated_at": "2026-08-07",
+  "destinations": [
+    {
+      "key": "polubit-kaliningrad-afisha",
+      "label": "Полюбить Калининград Афиша",
+      "aliases": [
+        "афиша",
+        "полюбить калининград афиша",
+        "канал афиша"
+      ],
+      "platforms": {
+        "telegram": {
+          "type": "channel",
+          "username": "kldevents",
+          "title": "Полюбить Калининград Афиша",
+          "verified_at": "2026-08-07",
+          "verified_via": "public_telegram_metadata"
+        },
+        "vk": {
+          "type": "community",
+          "group_id": 231920894,
+          "screen_name": "klgdevents",
+          "title": "Полюбить Калининград Афиша",
+          "verified_at": "2026-08-07",
+          "verified_via": "authenticated_vk_api_admin_level_3"
+        }
+      }
+    },
+    {
+      "key": "polubit-kaliningrad-anonsy",
+      "label": "Полюбить Калининград Анонсы",
+      "aliases": [
+        "анонсы",
+        "полюбить калининград анонсы",
+        "канал анонсы",
+        "основной канал анонсов"
+      ],
+      "platforms": {
+        "telegram": {
+          "type": "channel",
+          "username": "kenigevents",
+          "title": "Полюбить Калининград |️ Анонсы",
+          "accepted_titles": [
+            "Полюбить Калининград Анонсы",
+            "Полюбить Калининград | Анонсы",
+            "Полюбить Калининград |️ Анонсы"
+          ],
+          "verified_at": "2026-08-07",
+          "verified_via": "public_telegram_metadata"
+        },
+        "vk": {
+          "type": "community",
+          "group_id": 231828790,
+          "screen_name": "kenigeventsofficial",
+          "title": "Полюбить Калининград Анонсы",
+          "verified_at": "2026-08-07",
+          "verified_via": "authenticated_vk_api_admin_level_3"
+        },
+        "max": {
+          "type": "channel",
+          "title": "Полюбить Калининград Анонсы",
+          "public_url": "https://max.ru/channel_kenigevents",
+          "verified_at": "2026-08-07",
+          "verified_via": "authenticated_max_web_smoke"
+        }
+      }
+    },
+    {
+      "key": "uh-ty-kaliningrad",
+      "label": "Ух ты, Калининград!",
+      "aliases": [
+        "ух ты калининград",
+        "ухты калининград",
+        "канал ух ты калининград"
+      ],
+      "platforms": {
+        "telegram": {
+          "type": "channel",
+          "title": "Ух ты, Калининград!",
+          "lookup_mode": "exact_dialog_title",
+          "verification_status": "requires_authenticated_dialog_resolution",
+          "note": "Публичный username не подтверждён. Исполнитель обязан найти ровно один доступный канал с точным заголовком и проверить права до действия. @wheretogo39 и @youwillsee39 имеют другие публичные названия и не подставляются автоматически."
+        },
+        "vk": {
+          "type": "community",
+          "group_id": 238875824,
+          "screen_name": "uhtykaliningrad",
+          "title": "Ух ты, Калининград!",
+          "verified_at": "2026-08-07",
+          "verified_via": "authenticated_vk_api_admin_level_3"
+        },
+        "max": {
+          "type": "channel",
+          "title": "Ух ты, Калининград!",
+          "verified_at": "2026-08-07",
+          "verified_via": "authenticated_max_web_smoke"
+        }
+      }
+    },
+    {
+      "key": "polubit-kaliningrad",
+      "label": "Полюбить Калининград",
+      "aliases": [
+        "полюбить калининград",
+        "основной брендовый канал"
+      ],
+      "platforms": {
+        "telegram": {
+          "type": "channel",
+          "username": "lovekenig",
+          "title": "Полюбить Калининград",
+          "verified_at": "2026-08-07",
+          "verified_via": "public_telegram_metadata"
+        }
+      }
+    }
+  ]
+}
