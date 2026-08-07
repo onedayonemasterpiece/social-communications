@@ -14,39 +14,19 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
-      - name: Checkout social-communications
-        uses: actions/checkout@v4
-        with:
-          path: social-communications
-          persist-credentials: false
-
-      - name: Checkout events-bot-new
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: onedayonemasterpiece/events-bot-new
           ref: main
-          path: events-bot-new
           persist-credentials: false
 
-      - name: Inventory canonical VK write paths
+      - name: Print only canonical VK function locations
         shell: bash
         run: |
           set -euo pipefail
-          cd events-bot-new
-          echo 'VK_CANONICAL_MATCHES_START'
-          grep -RInE --exclude-dir=.git --include='*.py' --include='*.md' \
-            'photos\.getWallUploadServer|photos\.saveWallPhoto|wall\.post|publish_date|post_to_vk|VK_ACCESS_TOKEN5' . \
-            | head -n 1200
-          echo 'VK_CANONICAL_MATCHES_END'
-
-      - name: Print candidate Python functions with bounded context
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd events-bot-new
           python3 - <<'PY'
+          import ast
           from pathlib import Path
-          import re
 
           needles = (
               'photos.getWallUploadServer',
@@ -56,36 +36,35 @@ jobs:
               'post_to_vk',
               'VK_ACCESS_TOKEN5',
           )
-          candidates = []
-          for path in Path('.').rglob('*.py'):
-              if '.git' in path.parts:
+
+          rows = []
+          for path in sorted(Path('.').rglob('*.py')):
+              if '.git' in path.parts or '__pycache__' in path.parts:
                   continue
               try:
-                  text = path.read_text(encoding='utf-8')
+                  source = path.read_text(encoding='utf-8')
               except Exception:
                   continue
-              if any(needle in text for needle in needles):
-                  candidates.append((path, text))
+              hits = [needle for needle in needles if needle in source]
+              if not hits:
+                  continue
+              try:
+                  tree = ast.parse(source)
+              except SyntaxError:
+                  continue
+              for node in ast.walk(tree):
+                  if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                      continue
+                  segment = ast.get_source_segment(source, node) or ''
+                  node_hits = sorted(needle for needle in needles if needle in segment)
+                  if node_hits:
+                      rows.append((str(path), node.lineno, getattr(node, 'end_lineno', node.lineno), type(node).__name__, node.name, ','.join(node_hits)))
+              top_level_lines = []
+              for number, line in enumerate(source.splitlines(), start=1):
+                  if any(needle in line for needle in needles):
+                      top_level_lines.append(number)
+              print(f'VK_FILE={path};HIT_LINES={top_level_lines[:40]};NEEDLES={sorted(hits)}')
 
-          print('VK_CANDIDATE_FILES=' + ','.join(str(path) for path, _ in candidates))
-          for path, text in candidates:
-              lines = text.splitlines()
-              hit_lines = sorted({
-                  index
-                  for index, line in enumerate(lines)
-                  if any(needle in line for needle in needles)
-              })
-              ranges = []
-              for index in hit_lines:
-                  start = max(0, index - 45)
-                  end = min(len(lines), index + 85)
-                  if ranges and start <= ranges[-1][1] + 10:
-                      ranges[-1] = (ranges[-1][0], max(ranges[-1][1], end))
-                  else:
-                      ranges.append((start, end))
-              for start, end in ranges:
-                  print(f'VK_FILE_CONTEXT_START path={path} lines={start+1}-{end}')
-                  for number in range(start, end):
-                      print(f'{number+1:06d}: {lines[number]}')
-                  print(f'VK_FILE_CONTEXT_END path={path}')
+          for path, start, end, kind, name, hits in sorted(set(rows)):
+              print(f'VK_SCOPE={path}:{start}-{end};KIND={kind};NAME={name};NEEDLES={hits}')
           PY
