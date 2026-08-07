@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "requestId": "sc-amber-combine-20260807-2245-retry4:max",
+  "requestId": "sc-amber-combine-20260807-2245-verify:max",
   "destination": {
     "key": "polubit-kaliningrad-anonsy",
     "kind": "channel"
@@ -25,5 +25,5 @@
     "recipientInvisiblePreparation": true,
     "reuseExistingStage": true
   },
-  "verifyOnly": false
+  "verifyOnly": true
 }
