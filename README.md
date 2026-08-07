@@ -25,13 +25,14 @@ config/social-destinations.public.json
 
 Минимальный комплект repository secrets:
 
-| Платформа | Secret |
+| Назначение | Secret |
 |---|---|
 | MAX | `MAX_SESSION` |
-| Telegram | `TELEGRAM_AUTH_BUNDLE_GH_ACTIONS` |
+| Telegram StringSession и device identity | `TELEGRAM_AUTH_BUNDLE_GH_ACTIONS` |
+| Telegram app credentials | `TG_API_ID`, `TG_API_HASH` |
 | VK | `VK_ACCESS_TOKEN5` |
 
-Telegram bundle должен содержать `api_id`, `api_hash`, `session` и при наличии стабильные device-поля. Отдельные Telegram API secrets не требуются. Текущий bundle пока содержит session/device identity без `api_id` и `api_hash`, поэтому Telegram write-path блокируется до дополнения того же secret.
+Telegram использует тот же контракт, что Telegram Monitoring/Kaggle в `events-bot-new`: готовая авторизованная StringSession и стабильные device-поля находятся в `TELEGRAM_AUTH_BUNDLE_GH_ACTIONS`, а app credentials Telethon — в `TG_API_ID` и `TG_API_HASH`. Это одна существующая Telegram-сессия; новый вход, Telegram Desktop, Telegram Web и browser automation не нужны.
 
 ## MAX Web
 
@@ -92,7 +93,7 @@ Workflow:
 scripts/telegram_publish.py
 ```
 
-Поддержаны `schedule_post`, `publish_now` и `verify` для PNG + caption. Перед отправкой проверяются авторизация, точный channel identity, broadcast type, право `post_messages`, idempotency marker и существующие scheduled messages. GitHub Actions сериализует все обращения к `TELEGRAM_AUTH_BUNDLE_GH_ACTIONS`, чтобы одна StringSession не использовалась параллельно внутри репозитория.
+Исполнитель работает напрямую через Telethon `TelegramClient(StringSession(...), TG_API_ID, TG_API_HASH)` и повторяет проверенный подход Telegram Monitoring/Kaggle. Поддержаны `schedule_post`, `publish_now` и `verify` для PNG + caption. Перед отправкой проверяются авторизация, точный channel identity, broadcast type, право `post_messages`, idempotency marker и существующие scheduled messages. GitHub Actions сериализует все обращения к `TELEGRAM_AUTH_BUNDLE_GH_ACTIONS`, чтобы одна StringSession не использовалась параллельно внутри репозитория.
 
 ## VK
 
