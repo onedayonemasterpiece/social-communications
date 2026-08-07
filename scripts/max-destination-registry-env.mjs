@@ -1,12 +1,12 @@
 import fs from 'node:fs/promises';
 
-const PUBLIC_REGISTRY_URL = new URL('../config/max-destinations.public.json', import.meta.url);
+const PUBLIC_REGISTRY_URL = new URL('../config/social-destinations.public.json', import.meta.url);
 
 function normalizeText(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
 
-function registryEntries(parsed) {
+function registryEntries(parsed, { platform = null } = {}) {
   if (!parsed) return [];
   const entries = Array.isArray(parsed)
     ? parsed
@@ -18,6 +18,21 @@ function registryEntries(parsed) {
       }));
 
   return entries
+    .map((entry) => {
+      if (!entry) return null;
+      if (!platform) return entry;
+      const platformEntry = entry.platforms?.[platform];
+      if (!platformEntry) return null;
+      return {
+        key: entry.key,
+        title: platformEntry.title,
+        kind: platformEntry.type,
+        aliases: [
+          ...(Array.isArray(entry.aliases) ? entry.aliases : []),
+          ...(Array.isArray(platformEntry.aliases) ? platformEntry.aliases : []),
+        ],
+      };
+    })
     .filter((entry) => entry && normalizeText(entry.title))
     .map((entry) => ({
       key: normalizeText(entry.key),
@@ -79,7 +94,7 @@ function mergeRegistries(publicEntries, privateEntries) {
 }
 
 const publicParsed = JSON.parse(await fs.readFile(PUBLIC_REGISTRY_URL, 'utf8'));
-const publicEntries = registryEntries(publicParsed);
+const publicEntries = registryEntries(publicParsed, { platform: 'max' });
 const privateEntries = parsePrivateRegistry(process.env.MAX_DESTINATIONS_JSON);
 const destinations = mergeRegistries(publicEntries, privateEntries);
 
