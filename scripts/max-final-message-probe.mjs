@@ -101,59 +101,14 @@ async function inspectStructure(item) {
   return item.evaluate((element) => {
     const rawText = String(element.innerText || element.textContent || '');
     const lineBreakRuns = Array.from(rawText.matchAll(/\n+/g)).map((match) => match[0].length);
-    const tags = Array.from(element.querySelectorAll('p, div, br, a'))
-      .map((node) => ({
-        tag: node.tagName.toLowerCase(),
-        textLength: String(node.innerText || node.textContent || '').length,
-        href: node.tagName.toLowerCase() === 'a' ? String(node.getAttribute('href') || '') : '',
-      }))
-      .slice(0, 120);
     const box = element.getBoundingClientRect();
     return {
       rawText: rawText.slice(0, 2_500),
       lineBreakRuns,
       doubleBreakCount: lineBreakRuns.filter((length) => length >= 2).length,
-      tags,
       htmlPrefix: String(element.innerHTML || '').slice(0, 4_000),
       box: [Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)],
     };
-  });
-}
-
-async function elementControlsSnapshot(item) {
-  return item.evaluate((element) => {
-    const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
-    const visible = (node) => {
-      const style = getComputedStyle(node);
-      const box = node.getBoundingClientRect();
-      return style.display !== 'none'
-        && style.visibility !== 'hidden'
-        && Number(style.opacity || 1) > 0
-        && box.width > 0
-        && box.height > 0;
-    };
-    return Array.from(element.querySelectorAll(
-      '[aria-haspopup], [aria-label], [title], button, [role="button"], [role="menuitem"]',
-    )).map((node) => {
-      const box = node.getBoundingClientRect();
-      return {
-        tag: node.tagName.toLowerCase(),
-        role: node.getAttribute('role') || '',
-        hasPopup: node.getAttribute('aria-haspopup') || '',
-        expanded: node.getAttribute('aria-expanded') || '',
-        aria: clean(node.getAttribute('aria-label') || ''),
-        title: clean(node.getAttribute('title') || ''),
-        text: clean(node.innerText || node.textContent || '').slice(0, 120),
-        visible: visible(node),
-        box: [Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)],
-        className: String(node.className || '').slice(0, 160),
-      };
-    }).filter((entry) => (
-      entry.hasPopup
-      || /редакт|измен|удал|копир|ответ|закреп|пересл|выбрать|действ|ещ|меню|опци/i.test(
-        `${entry.aria} ${entry.title} ${entry.text} ${entry.className}`,
-      )
-    )).slice(0, 100);
   });
 }
 
@@ -203,9 +158,8 @@ async function overlaySnapshot(page) {
 
 const command = await loadMaxCommand();
 if (command.content.type !== 'rich_post') throw new Error('MAX final-message probe requires rich_post content.');
-if (requiredTextFragments(command.content.text).length < 3) {
-  throw new Error('MAX final-message probe requires at least three stable text fragments.');
-}
+const stableFragments = requiredTextFragments(command.content.text);
+if (stableFragments.length < 3) throw new Error('MAX final-message probe requires at least three stable text fragments.');
 
 const destination = await destinationConfig(command);
 let runtime;
@@ -224,9 +178,7 @@ try {
     if (match.candidates.length) break;
     if (attempt < ATTEMPTS) await runtime.page.keyboard.press('End').catch(() => {});
   }
-  if (!match?.candidates.length) {
-    throw new Error(`MAX probe found no rich-post candidate in ${resolved.title}.`);
-  }
+  if (!match?.candidates.length) throw new Error(`MAX probe found no rich-post candidate in ${resolved.title}.`);
 
   const selected = [...match.candidates]
     .sort((left, right) => (
@@ -236,20 +188,30 @@ try {
   const item = runtime.page.locator('[role="listitem"], [role="presentation"]').nth(selected.index);
   await item.scrollIntoViewIfNeeded().catch(() => {});
   await runtime.page.waitForTimeout(500);
-
   const structure = await inspectStructure(item);
+
   await item.hover().catch(() => {});
   await runtime.page.waitForTimeout(800);
-  const controlsAfterHover = await elementControlsSnapshot(item);
-
   const actionButton = item.getByRole('button', { name: 'Действия с сообщением', exact: true });
-  let actionMenu = [];
+  let firstLayer = [];
+  let secondLayer = [];
+
   if (await actionButton.count()) {
-    await actionButton.click({ timeout: 8_000 }).catch(() => {});
+    await actionButton.click({ timeout: 8_000 });
     await runtime.page.waitForTimeout(900);
-    actionMenu = await overlaySnapshot(runtime.page);
-    await runtime.page.keyboard.press('Escape').catch(() => {});
+    firstLayer = await overlaySnapshot(runtime.page);
+
+    const selectedCell = runtime.page.locator('.cell--selected').filter({ hasText: stableFragments[0] }).first();
+    const selectedWrapper = selectedCell.locator('xpath=..');
+    const more = selectedWrapper.getByRole('button', { name: 'Еще', exact: true });
+    if (await more.count()) {
+      await more.click({ timeout: 8_000 });
+      await runtime.page.waitForTimeout(900);
+      secondLayer = await overlaySnapshot(runtime.page);
+    }
   }
+  await runtime.page.keyboard.press('Escape').catch(() => {});
+  await runtime.page.keyboard.press('Escape').catch(() => {});
 
   console.log(`MAX_FORMAT_PROBE_DESTINATION=${resolved.title}`);
   console.log(`MAX_FORMAT_PROBE_CANDIDATES=${JSON.stringify(match.candidates.map((candidate) => ({
@@ -259,8 +221,8 @@ try {
     box: candidate.box.map((value) => Math.round(value)),
   })))}`);
   console.log(`MAX_FORMAT_PROBE_STRUCTURE=${JSON.stringify(structure)}`);
-  console.log(`MAX_FORMAT_PROBE_CONTROLS_HOVER=${JSON.stringify(controlsAfterHover)}`);
-  console.log(`MAX_FORMAT_PROBE_ACTION_MENU=${JSON.stringify(actionMenu)}`);
+  console.log(`MAX_FORMAT_PROBE_ACTION_LAYER1=${JSON.stringify(firstLayer)}`);
+  console.log(`MAX_FORMAT_PROBE_ACTION_LAYER2=${JSON.stringify(secondLayer)}`);
 } finally {
   if (runtime?.context) await runtime.context.close().catch(() => {});
   if (runtime?.browser) await runtime.browser.close().catch(() => {});
