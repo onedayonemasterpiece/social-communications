@@ -1,12 +1,18 @@
 {
-  "version": 1,
-  "requestId": "max-test-scheduled-20260808-1100-verify-only",
-  "chat": {
-    "title": "Тестовая группа"
+  "version": 2,
+  "requestId": "max-safe-stage-send-now-text-20260807-1",
+  "destination": {
+    "query": "тестовая",
+    "kind": "group"
   },
-  "action": "schedule_text",
-  "text": "Тест отложенной отправки: это сообщение должно появиться 8 августа 2026 года в 11:00.",
-  "scheduleAt": "2026-08-08T11:00:00+02:00",
-  "timeZone": "Europe/Kaliningrad",
-  "verifyOnly": true
+  "content": {
+    "type": "text",
+    "text": "Тест безопасной двухфазной отправки: сообщение подготовлено в отложенных и отправлено сейчас."
+  },
+  "delivery": {
+    "mode": "send_now",
+    "timeZone": "Europe/Kaliningrad",
+    "recipientInvisiblePreparation": true,
+    "reuseExistingStage": true
+  }
 }
