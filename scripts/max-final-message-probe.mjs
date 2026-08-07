@@ -10,22 +10,16 @@ const ATTEMPTS = 5;
 const RETRY_DELAY_MS = 1_500;
 
 function canonicalUrl(value) {
-  try {
-    return new URL(value).href;
-  } catch {
-    return '';
-  }
+  try { return new URL(value).href; } catch { return ''; }
 }
 
 function requiredTextFragments(text) {
-  const normalized = normalizeText(text);
-  const sentences = normalized.match(/[^.!?]+[.!?]+|[^.!?]+$/gu)
+  const sentences = normalizeText(text).match(/[^.!?]+[.!?]+|[^.!?]+$/gu)
     ?.map((value) => normalizeText(value))
     .filter((value) => value.length >= 20) || [];
   if (!sentences.length) return [];
   const last = sentences.length - 1;
-  const indexes = new Set([0, Math.floor(last / 3), Math.floor((last * 2) / 3), last]);
-  return [...indexes]
+  return [...new Set([0, Math.floor(last / 3), Math.floor((last * 2) / 3), last])]
     .sort((left, right) => left - right)
     .map((index) => sentences[index])
     .filter(Boolean);
@@ -34,23 +28,19 @@ function requiredTextFragments(text) {
 async function destinationConfig(command) {
   const payload = JSON.parse(await fs.readFile(REGISTRY_PATH, 'utf8'));
   const key = normalizeText(command.destination?.key);
-  const entries = Array.isArray(payload?.destinations) ? payload.destinations : [];
-  const matches = entries.filter((entry) => normalizeText(entry?.key) === key);
-  if (matches.length !== 1) {
-    throw new Error(`MAX probe expected one destination registry entry for ${key}, found ${matches.length}.`);
-  }
+  const matches = (payload?.destinations || []).filter((entry) => normalizeText(entry?.key) === key);
+  if (matches.length !== 1) throw new Error(`MAX probe expected one registry entry for ${key}.`);
   const config = matches[0]?.platforms?.max;
   if (!config?.title) throw new Error(`MAX probe found no MAX title for ${key}.`);
   return { title: normalizeText(config.title), kind: normalizeText(config.type) || 'channel' };
 }
 
-async function matchingMessageCandidates(page, command) {
+async function matchingCandidates(page, command) {
   const fragments = requiredTextFragments(command.content.text);
   const links = (command.content.links || []).map((link) => ({
     text: normalizeText(link.text),
     href: canonicalUrl(link.url),
   }));
-
   const locator = page.locator('[role="listitem"], [role="presentation"]');
   const count = Math.min(await locator.count(), 900);
   const candidates = [];
@@ -67,8 +57,8 @@ async function matchingMessageCandidates(page, command) {
         text: clean(anchor.innerText || anchor.textContent || ''),
         href: canonical(anchor.getAttribute('href') || anchor.href || ''),
       }));
-      const fragmentMatches = expected.fragments.filter((fragment) => bodyText.includes(fragment));
-      const linkMatches = expected.links.map((link) => anchors.some((anchor) => (
+      const fragmentMatches = expected.fragments.filter((fragment) => bodyText.includes(fragment)).length;
+      const linkMatches = expected.links.every((link) => anchors.some((anchor) => (
         anchor.text === link.text && anchor.href === link.href
       )));
       const media = Boolean(element.querySelector(
@@ -78,8 +68,7 @@ async function matchingMessageCandidates(page, command) {
       let depth = 0;
       for (let parent = element.parentElement; parent; parent = parent.parentElement) depth += 1;
       return {
-        bodyText,
-        fragmentMatches: fragmentMatches.length,
+        fragmentMatches,
         fragmentTotal: expected.fragments.length,
         linkMatches,
         media,
@@ -87,32 +76,28 @@ async function matchingMessageCandidates(page, command) {
         box: [box.x, box.y, box.width, box.height],
       };
     }, { fragments, links }).catch(() => null);
-
     if (!details) continue;
-    if (details.fragmentMatches !== details.fragmentTotal) continue;
-    if (!details.media || !details.linkMatches.every(Boolean)) continue;
+    if (details.fragmentMatches !== details.fragmentTotal || !details.linkMatches || !details.media) continue;
     candidates.push({ index, ...details });
   }
-
-  return { fragments, links, candidates };
+  return candidates;
 }
 
-async function inspectStructure(item) {
+async function structure(item) {
   return item.evaluate((element) => {
     const rawText = String(element.innerText || element.textContent || '');
     const lineBreakRuns = Array.from(rawText.matchAll(/\n+/g)).map((match) => match[0].length);
     const box = element.getBoundingClientRect();
     return {
-      rawText: rawText.slice(0, 2_500),
       lineBreakRuns,
       doubleBreakCount: lineBreakRuns.filter((length) => length >= 2).length,
-      htmlPrefix: String(element.innerHTML || '').slice(0, 4_000),
       box: [Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)],
+      htmlPrefix: String(element.innerHTML || '').slice(0, 5_000),
     };
   });
 }
 
-async function overlaySnapshot(page) {
+async function visibleOverlays(page) {
   return page.evaluate(() => {
     const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
     const visible = (element) => {
@@ -127,102 +112,76 @@ async function overlaySnapshot(page) {
         && box.top < innerHeight;
     };
     return Array.from(document.querySelectorAll(
-      '[role="menuitem"], [role="menu"], [role="dialog"], [data-radix-popper-content-wrapper], button, [role="button"], [aria-haspopup]',
-    ))
-      .filter(visible)
-      .map((element) => {
-        const box = element.getBoundingClientRect();
-        return {
-          tag: element.tagName.toLowerCase(),
-          role: element.getAttribute('role') || '',
-          hasPopup: element.getAttribute('aria-haspopup') || '',
-          expanded: element.getAttribute('aria-expanded') || '',
-          aria: clean(element.getAttribute('aria-label') || ''),
-          title: clean(element.getAttribute('title') || ''),
-          text: clean(element.innerText || element.textContent || '').slice(0, 500),
-          box: [Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)],
-          className: String(element.className || '').slice(0, 180),
-        };
-      })
-      .filter((entry) => (
-        entry.role === 'dialog'
-        || entry.role === 'menu'
-        || entry.role === 'menuitem'
-        || /редакт|измен|удал|копир|ответ|закреп|пересл|выбрать|действ|ещ|меню|опци|сохран|отмен/i.test(
-          `${entry.aria} ${entry.title} ${entry.text} ${entry.className}`,
-        )
-      ))
-      .slice(0, 120);
+      '[role="dialog"], [role="menu"], [role="menuitem"], [data-radix-popper-content-wrapper], .popover, .actionsMenu',
+    )).filter(visible).map((element) => {
+      const box = element.getBoundingClientRect();
+      return {
+        tag: element.tagName.toLowerCase(),
+        role: element.getAttribute('role') || '',
+        aria: clean(element.getAttribute('aria-label') || ''),
+        text: clean(element.innerText || element.textContent || '').slice(0, 1_000),
+        box: [Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)],
+        className: String(element.className || '').slice(0, 220),
+      };
+    }).slice(0, 120);
   });
 }
 
 const command = await loadMaxCommand();
-if (command.content.type !== 'rich_post') throw new Error('MAX final-message probe requires rich_post content.');
-const stableFragments = requiredTextFragments(command.content.text);
-if (stableFragments.length < 3) throw new Error('MAX final-message probe requires at least three stable text fragments.');
-
+if (command.content.type !== 'rich_post') throw new Error('MAX message action probe requires rich_post.');
 const destination = await destinationConfig(command);
 let runtime;
 
 try {
-  runtime = await launchAuthenticatedMax({ timezoneId: command.delivery.timeZone });
+  runtime = await launchAuthenticatedMax({
+    timezoneId: command.delivery.timeZone,
+    viewport: { width: 1440, height: 1800 },
+  });
   const resolved = await resolveDestination(runtime.page, {
     exactTitle: destination.title,
     kind: destination.kind,
   });
 
-  let match = null;
+  let candidates = [];
   for (let attempt = 1; attempt <= ATTEMPTS; attempt += 1) {
     await runtime.page.waitForTimeout(attempt === 1 ? 1_500 : RETRY_DELAY_MS);
-    match = await matchingMessageCandidates(runtime.page, command);
-    if (match.candidates.length) break;
-    if (attempt < ATTEMPTS) await runtime.page.keyboard.press('End').catch(() => {});
+    candidates = await matchingCandidates(runtime.page, command);
+    if (candidates.length) break;
+    await runtime.page.keyboard.press('End').catch(() => {});
   }
-  if (!match?.candidates.length) throw new Error(`MAX probe found no rich-post candidate in ${resolved.title}.`);
+  if (!candidates.length) throw new Error(`MAX probe found no exact post in ${resolved.title}.`);
 
-  const selected = [...match.candidates]
-    .sort((left, right) => (
-      right.depth - left.depth
-      || (left.box[2] * left.box[3]) - (right.box[2] * right.box[3])
-    ))[0];
+  const selected = [...candidates].sort((left, right) => (
+    right.depth - left.depth
+    || (left.box[2] * left.box[3]) - (right.box[2] * right.box[3])
+  ))[0];
   const item = runtime.page.locator('[role="listitem"], [role="presentation"]').nth(selected.index);
-  await item.scrollIntoViewIfNeeded().catch(() => {});
-  await runtime.page.waitForTimeout(500);
-  const structure = await inspectStructure(item);
+  await item.evaluate((element) => element.scrollIntoView({ block: 'start', inline: 'nearest' }));
+  await runtime.page.waitForTimeout(900);
+  await item.hover({ position: { x: 250, y: 24 } }).catch(() => item.hover());
+  await runtime.page.waitForTimeout(900);
 
-  await item.hover().catch(() => {});
-  await runtime.page.waitForTimeout(800);
   const actionButton = item.getByRole('button', { name: 'Действия с сообщением', exact: true });
-  let firstLayer = [];
-  let secondLayer = [];
+  const buttonCount = await actionButton.count();
+  const buttonVisible = buttonCount ? await actionButton.isVisible().catch(() => false) : false;
+  const buttonBox = buttonCount ? await actionButton.boundingBox().catch(() => null) : null;
+  const before = await visibleOverlays(runtime.page);
 
-  if (await actionButton.count()) {
-    await actionButton.click({ timeout: 8_000 });
-    await runtime.page.waitForTimeout(900);
-    firstLayer = await overlaySnapshot(runtime.page);
-
-    const selectedCell = runtime.page.locator('.cell--selected').filter({ hasText: stableFragments[0] }).first();
-    const selectedWrapper = selectedCell.locator('xpath=..');
-    const more = selectedWrapper.getByRole('button', { name: 'Еще', exact: true });
-    if (await more.count()) {
-      await more.click({ timeout: 8_000 });
-      await runtime.page.waitForTimeout(900);
-      secondLayer = await overlaySnapshot(runtime.page);
-    }
+  if (!buttonCount || !buttonVisible) {
+    throw new Error(`MAX message action button was not visible; count=${buttonCount}, box=${JSON.stringify(buttonBox)}.`);
   }
-  await runtime.page.keyboard.press('Escape').catch(() => {});
-  await runtime.page.keyboard.press('Escape').catch(() => {});
+  await actionButton.click({ timeout: 8_000 });
+  await runtime.page.waitForTimeout(1_000);
+  const after = await visibleOverlays(runtime.page);
+  const expanded = await actionButton.getAttribute('aria-expanded').catch(() => null);
 
-  console.log(`MAX_FORMAT_PROBE_DESTINATION=${resolved.title}`);
-  console.log(`MAX_FORMAT_PROBE_CANDIDATES=${JSON.stringify(match.candidates.map((candidate) => ({
-    index: candidate.index,
-    fragments: `${candidate.fragmentMatches}/${candidate.fragmentTotal}`,
-    depth: candidate.depth,
-    box: candidate.box.map((value) => Math.round(value)),
-  })))}`);
-  console.log(`MAX_FORMAT_PROBE_STRUCTURE=${JSON.stringify(structure)}`);
-  console.log(`MAX_FORMAT_PROBE_ACTION_LAYER1=${JSON.stringify(firstLayer)}`);
-  console.log(`MAX_FORMAT_PROBE_ACTION_LAYER2=${JSON.stringify(secondLayer)}`);
+  console.log(`MAX_MESSAGE_ACTION_DESTINATION=${resolved.title}`);
+  console.log(`MAX_MESSAGE_ACTION_CANDIDATES=${JSON.stringify(candidates)}`);
+  console.log(`MAX_MESSAGE_ACTION_STRUCTURE=${JSON.stringify(await structure(item))}`);
+  console.log(`MAX_MESSAGE_ACTION_BUTTON=${JSON.stringify({ count: buttonCount, visible: buttonVisible, box: buttonBox, expanded })}`);
+  console.log(`MAX_MESSAGE_ACTION_OVERLAYS_BEFORE=${JSON.stringify(before)}`);
+  console.log(`MAX_MESSAGE_ACTION_OVERLAYS_AFTER=${JSON.stringify(after)}`);
+  await runtime.page.keyboard.press('Escape').catch(() => {});
 } finally {
   if (runtime?.context) await runtime.context.close().catch(() => {});
   if (runtime?.browser) await runtime.browser.close().catch(() => {});
