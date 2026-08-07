@@ -9,7 +9,10 @@ let runtime;
 
 try {
   runtime = await launchAuthenticatedMax({ timezoneId: command.delivery.timeZone });
-  const destination = await resolveDestination(runtime.page, command.destination);
+  const destination = await resolveDestination(runtime.page, {
+    exactTitle: 'Полюбить Калининград Анонсы',
+    kind: 'channel',
+  });
   await runtime.page.waitForTimeout(1_500);
 
   const expectedText = normalizeText(command.content.text);
