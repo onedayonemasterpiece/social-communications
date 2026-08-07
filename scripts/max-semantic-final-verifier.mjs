@@ -37,22 +37,23 @@ async function destinationConfig(command) {
 }
 
 function requiredTextFragments(text) {
-  const paragraphs = String(text || '')
-    .split(/\n\s*\n/u)
-    .map((value) => normalizeText(value))
-    .filter(Boolean);
-  if (!paragraphs.length) return [];
+  const normalized = normalizeText(text);
+  const sentences = normalized.match(/[^.!?]+[.!?]+|[^.!?]+$/gu)
+    ?.map((value) => normalizeText(value))
+    .filter((value) => value.length >= 20) || [];
+  if (!sentences.length) return [];
 
+  const last = sentences.length - 1;
   const indexes = new Set([
     0,
-    Math.min(2, paragraphs.length - 1),
-    Math.min(4, paragraphs.length - 1),
-    paragraphs.length - 1,
+    Math.floor(last / 3),
+    Math.floor((last * 2) / 3),
+    last,
   ]);
   return [...indexes]
     .sort((left, right) => left - right)
-    .map((index) => paragraphs[index])
-    .filter((value) => value.length >= 20);
+    .map((index) => sentences[index])
+    .filter(Boolean);
 }
 
 async function inspectCurrentChat(page, command) {
