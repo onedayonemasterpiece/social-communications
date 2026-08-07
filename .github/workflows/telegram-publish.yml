@@ -26,16 +26,20 @@ jobs:
     timeout-minutes: 12
     env:
       TELEGRAM_AUTH_BUNDLE_GH_ACTIONS: ${{ secrets.TELEGRAM_AUTH_BUNDLE_GH_ACTIONS }}
+      TG_API_ID: ${{ secrets.TG_API_ID }}
+      TG_API_HASH: ${{ secrets.TG_API_HASH }}
       SOCIAL_COMMAND_JSON: ${{ github.event.inputs.command_json }}
     steps:
-      - name: Verify credential
+      - name: Verify Telethon credentials
         shell: bash
         run: |
           set -euo pipefail
-          [[ -n "${TELEGRAM_AUTH_BUNDLE_GH_ACTIONS:-}" ]] || {
-            echo "::error::Repository secret TELEGRAM_AUTH_BUNDLE_GH_ACTIONS is absent."
-            exit 1
-          }
+          for name in TELEGRAM_AUTH_BUNDLE_GH_ACTIONS TG_API_ID TG_API_HASH; do
+            [[ -n "${!name:-}" ]] || {
+              echo "::error::Repository secret ${name} is absent."
+              exit 1
+            }
+          done
 
       - uses: actions/checkout@v4
         with:
