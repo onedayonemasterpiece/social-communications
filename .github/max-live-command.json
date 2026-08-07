@@ -1,11 +1,18 @@
 {
   "version": 1,
-  "requestId": "max-test-scheduled-20260808-1100-retry2",
+  "requestId": "max-test-rich-post-20260807-1",
   "chat": {
     "title": "Тестовая группа"
   },
-  "action": "schedule_text",
-  "text": "Тест отложенной отправки: это сообщение должно появиться 8 августа 2026 года в 11:00.",
-  "scheduleAt": "2026-08-08T11:00:00+02:00",
-  "timeZone": "Europe/Kaliningrad"
+  "action": "rich_post",
+  "text": "Тест публикации с изображением и форматированной ссылкой.",
+  "image": {
+    "path": "generated/max-test-post.png"
+  },
+  "links": [
+    {
+      "text": "Открыть «Полюбить Калининград»",
+      "url": "https://kenigevents.ru/"
+    }
+  ]
 }
