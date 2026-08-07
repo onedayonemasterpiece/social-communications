@@ -11,6 +11,8 @@ on:
       - scripts/vk_publish.py
       - tests/test_social_registry.py
       - tests/test_social_publish_contracts.py
+      - .github/workflows/telegram-publish.yml
+      - .github/workflows/vk-publish.yml
       - .github/workflows/social-contract-ci.yml
   pull_request:
     paths:
@@ -21,6 +23,8 @@ on:
       - scripts/vk_publish.py
       - tests/test_social_registry.py
       - tests/test_social_publish_contracts.py
+      - .github/workflows/telegram-publish.yml
+      - .github/workflows/vk-publish.yml
       - .github/workflows/social-contract-ci.yml
 
 permissions:
