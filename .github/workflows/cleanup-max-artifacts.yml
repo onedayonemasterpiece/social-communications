@@ -18,7 +18,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPOSITORY: ${{ github.repository }}
-      ARTIFACT_IDS: "8982322980 8982410204 8982454303 8982504542 8982566903 8982671179"
+      ARTIFACT_IDS: "8982322980 8982410204 8982454303 8982504542 8982566903 8982671179 8982841062"
     steps:
       - name: Delete short-lived MAX artifacts
         shell: bash
