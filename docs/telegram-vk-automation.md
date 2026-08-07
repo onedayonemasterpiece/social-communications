@@ -61,6 +61,24 @@ Commit-path:
 
 Токен передаётся только POST body и не входит в сообщения ошибок или receipts.
 
+### Канонический контракт `events-bot-new`
+
+VK adapter не поддерживает отдельную изобретённую реализацию. Postponed identity
+перенесена из `events-bot-new/main_part2.py` (`post_to_vk`,
+`_resolve_vk_postponed_wall_id`, `_resolve_vk_postponed_wall_id_any_actor`) и
+закреплена в `scripts/vk_events_bot_contract.py`.
+
+Критический нюанс VK: `wall.post` может вернуть transient `post_id`, а
+`wall.get(filter=postponed)` — другой wall item `id` с исходным значением в
+`postponed_id`. Канонический receipt использует wall item `id`; проверка всегда
+начинается с semantic collection `postponed`, а `all` остаётся только fallback.
+
+API receipt сам по себе не считается полной первой приёмкой новой пары
+`credential + community`: перед признанием destination готовым оператор должен
+увидеть запись в VK UI. После такой первой UI-приёмки регулярные операции могут
+использовать deterministic API verify по точному community identity, marker,
+времени и attachments.
+
 ### Live-результат 7 августа 2026 года
 
 В `Полюбить Калининград Анонсы` (`kenigeventsofficial`, group `231828790`) поставлена нативная отложенная тестовая публикация с PNG на:

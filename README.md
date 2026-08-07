@@ -109,7 +109,7 @@ Workflow:
 scripts/vk_publish.py
 ```
 
-Поддержаны `schedule_post`, `publish_now` и `verify` для PNG + текста. Перед commit проверяются точные `group_id`, `screen_name`, title, `is_admin=1`, `admin_level>=2` и postponed queue по marker. Загрузка изображения идёт через `photos.getWallUploadServer` → `photos.saveWallPhoto`, публикация — через `wall.post`, затем выполняется независимый `wall.get(filter=postponed)`.
+Поддержаны `schedule_post`, `publish_now` и `verify` для PNG + текста. Перед commit проверяются точные `group_id`, `screen_name`, title, `is_admin=1`, `admin_level>=2` и postponed queue по marker. Загрузка изображения идёт через `photos.getWallUploadServer` → `photos.saveWallPhoto`, публикация — через `wall.post`, затем выполняется независимый `wall.get(filter=postponed)`. Postponed-id resolution переиспользует канонический контракт `events-bot-new`: transient `wall.post.post_id` связывается с фактическим wall item `id` через `postponed_id`, с `filter=postponed` как source of truth. Первая готовность новой пары token/community требует также operator-visible UI acceptance.
 
 7 августа 2026 года live-run поставил тестовый PNG-пост в `Полюбить Калининград Анонсы` (`kenigeventsofficial`, group `231828790`) на 21:00 Europe/Kaliningrad. Отдельный verify-run подтвердил тот же post id, время и photo attachment без повторной загрузки.
 

@@ -27,6 +27,7 @@ from typing import Any
 import requests
 
 from social_registry import DestinationRegistry
+from vk_events_bot_contract import item_identity, resolve_postponed_item
 
 VK_API_VERSION = "5.199"
 VK_API_ROOT = "https://api.vk.com/method"
@@ -282,26 +283,39 @@ def _post_items(response: Any) -> list[dict[str, Any]]:
     raise VkPublishError("wall.get returned an unsupported response shape")
 
 
-def _find_postponed(
+def _wall_items(
     client: VkClient,
     *,
     group_id: int,
-    marker: str,
+    wall_filter: str,
 ) -> list[dict[str, Any]]:
     found: list[dict[str, Any]] = []
     for page in range(MAX_POSTPONED_PAGES):
         response = client.api(
             "wall.get",
             owner_id=-group_id,
-            filter="postponed",
+            filter=wall_filter,
             count=POSTPONED_PAGE_SIZE,
             offset=page * POSTPONED_PAGE_SIZE,
         )
         items = _post_items(response)
-        found.extend(item for item in items if marker in _clean_text(item.get("text")))
+        found.extend(items)
         if len(items) < POSTPONED_PAGE_SIZE:
             break
     return found
+
+
+def _find_postponed(
+    client: VkClient,
+    *,
+    group_id: int,
+    marker: str,
+) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in _wall_items(client, group_id=group_id, wall_filter="postponed")
+        if marker in _clean_text(item.get("text"))
+    ]
 
 
 def _attachment_types(post: dict[str, Any]) -> list[str]:
@@ -345,8 +359,10 @@ def _verify_matching_post(
     types = _attachment_types(post)
     if "photo" not in types:
         raise VkPublishError("matching postponed post has no photo attachment")
+    _, postponed_id = item_identity(post)
     return {
         "post_id": post_id,
+        "postponed_id": postponed_id or None,
         "attachment_types": types,
         "scheduled_epoch": int(post.get("date") or post.get("publish_date") or 0),
     }
@@ -372,6 +388,7 @@ def execute(command: Command, *, token: str) -> dict[str, Any]:
             "destination_key": destination.key,
             "community": verified_destination,
             "post_id": verified["post_id"],
+            "postponed_id": verified["postponed_id"],
             "scheduled_at": command.scheduled_at.isoformat() if command.scheduled_at else None,
             "attachment_types": verified["attachment_types"],
         }
@@ -407,23 +424,29 @@ def execute(command: Command, *, token: str) -> dict[str, Any]:
             "image": image,
         }
 
-    matches = _find_postponed(client, group_id=group_id, marker=command.marker)
-    if len(matches) != 1:
+    def fetch_items(wall_filter: str) -> list[dict[str, Any]]:
+        return _wall_items(client, group_id=group_id, wall_filter=wall_filter)
+
+    resolved = resolve_postponed_item(
+        response_post_id=post_id,
+        marker=command.marker,
+        fetch_items=fetch_items,
+    )
+    if resolved is None:
         raise VkPublishError(
-            f"post-commit verification expected exactly one postponed post, found {len(matches)}"
+            "post-commit verification could not resolve wall.post response id "
+            "through VK's postponed collection"
         )
-    verified = _verify_matching_post(matches[0], command=command, expected_epoch=expected_epoch)
-    if verified["post_id"] != post_id:
-        raise VkPublishError(
-            f"post-commit verification id mismatch: wall.post={post_id} queue={verified['post_id']}"
-        )
+    verified = _verify_matching_post(resolved, command=command, expected_epoch=expected_epoch)
     return {
         "schema": "social.vk.receipt.v1",
         "status": "scheduled",
         "request_id": command.request_id,
         "destination_key": destination.key,
         "community": verified_destination,
-        "post_id": post_id,
+        "post_id": verified["post_id"],
+        "wall_post_response_id": post_id,
+        "postponed_id": verified["postponed_id"],
         "scheduled_at": command.scheduled_at.isoformat() if command.scheduled_at else None,
         "attachment_types": verified["attachment_types"],
         "image": image,

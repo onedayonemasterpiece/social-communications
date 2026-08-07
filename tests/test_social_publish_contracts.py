@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import telegram_publish  # noqa: E402
 import vk_publish  # noqa: E402
+import vk_events_bot_contract  # noqa: E402
 
 
 class TelegramBundleTests(unittest.TestCase):
@@ -87,6 +88,64 @@ class TelegramScheduledHistoryTests(unittest.TestCase):
             telegram_publish.functions.messages.GetScheduledHistoryRequest,
         )
         self.assertEqual(client.request.hash, 0)
+
+
+class VkEventsBotPostponedIdentityTests(unittest.TestCase):
+    def test_resolves_shifted_wall_item_id_from_postponed_id(self) -> None:
+        calls = []
+        item = {
+            "id": 125,
+            "postponed_id": 124,
+            "text": "Caption\n\nMarker: TEST-124",
+        }
+
+        def fetch_items(wall_filter: str):
+            calls.append(wall_filter)
+            return [item] if wall_filter == "postponed" else []
+
+        resolved = vk_events_bot_contract.resolve_postponed_item(
+            response_post_id=124,
+            marker="TEST-124",
+            fetch_items=fetch_items,
+            sleep=lambda _delay: None,
+        )
+
+        self.assertIs(resolved, item)
+        self.assertEqual(calls, ["postponed"])
+
+    def test_retries_user_visible_postponed_collection(self) -> None:
+        attempts = 0
+        sleeps = []
+
+        def fetch_items(wall_filter: str):
+            nonlocal attempts
+            if wall_filter == "postponed":
+                attempts += 1
+                if attempts == 2:
+                    return [{"id": 125, "postponed_id": 124, "text": "TEST-124"}]
+            return []
+
+        resolved = vk_events_bot_contract.resolve_postponed_item(
+            response_post_id=124,
+            marker="TEST-124",
+            fetch_items=fetch_items,
+            sleep=sleeps.append,
+        )
+
+        self.assertEqual(resolved["id"], 125)
+        self.assertEqual(sleeps, [0.8])
+
+    def test_marker_is_required_in_addition_to_response_id(self) -> None:
+        resolved = vk_events_bot_contract.resolve_postponed_item(
+            response_post_id=124,
+            marker="RIGHT-MARKER",
+            fetch_items=lambda _wall_filter: [
+                {"id": 125, "postponed_id": 124, "text": "WRONG-MARKER"}
+            ],
+            attempts=1,
+            sleep=lambda _delay: None,
+        )
+        self.assertIsNone(resolved)
 
 
 class CommandContractTests(unittest.TestCase):
