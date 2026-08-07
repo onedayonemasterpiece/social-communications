@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      MAX_SESSION: ${{ secrets.max_session || secrets.MAX_SESSION }}
+      MAX_SESSION: ${{ secrets.MAX_SESSION_V2 || secrets.max_session || secrets.MAX_SESSION }}
       MAX_MESSAGE: ${{ github.event.inputs.message || 'Привет мир' }}
       MAX_ARTIFACT_DIR: artifacts/max-web
 
@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${MAX_SESSION:-}" ]]; then
-            echo "::error::MAX session is absent from repository secret max_session/MAX_SESSION."
+            echo "::error::MAX session is absent from repository secret MAX_SESSION_V2/max_session/MAX_SESSION."
             exit 1
           fi
           echo "MAX_SESSION_AVAILABLE=1"
