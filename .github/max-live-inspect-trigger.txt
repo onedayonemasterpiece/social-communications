@@ -1,0 +1,3 @@
+requested_at=2026-08-07T06:15:00Z
+chat=Тестовая группа
+mode=inspect-send-context-menu
