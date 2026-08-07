@@ -97,6 +97,28 @@ jobs:
           }
           if (result.destination?.title) console.log(`MAX_RESULT_DESTINATION=${result.destination.title}`);
           if (result.staging?.stageAt) console.log(`MAX_RESULT_STAGE_AT=${result.staging.stageAt}`);
+
+          const verification = result.verification || result.staging?.verification || null;
+          if (verification) {
+            console.log(`MAX_RESULT_VERIFY found=${Boolean(verification.found)} ambiguous=${Boolean(verification.ambiguous)} count=${Number(verification.count || 0)} expected_time=${verification.expectedTime || 'none'}`);
+            if (verification.queue) {
+              const diagnostics = Array.isArray(verification.queue.diagnostics)
+                ? verification.queue.diagnostics.slice(0, 20)
+                : [];
+              console.log(`MAX_RESULT_QUEUE absent=${Boolean(verification.queue.absent)} already_open=${Boolean(verification.queue.alreadyOpen)} title=${verification.queue.title || 'none'} diagnostics=${JSON.stringify(diagnostics)}`);
+            }
+            const matches = Array.isArray(verification.matches)
+              ? verification.matches.map((match) => ({
+                  box: match.box || null,
+                  textLength: String(match.bodyText || '').length,
+                  structure: match.structure || null,
+                })).slice(0, 10)
+              : [];
+            console.log(`MAX_RESULT_MATCHES=${JSON.stringify(matches)}`);
+          }
+          if (result.cleanup) {
+            console.log(`MAX_RESULT_CLEANUP=${JSON.stringify(result.cleanup)}`);
+          }
           NODE
 
       - name: Fail job when MAX sender failed
