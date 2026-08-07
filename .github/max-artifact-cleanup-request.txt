@@ -1,3 +1,3 @@
-requested_at=2026-08-07T06:48:30Z
-artifact_ids=8984668213 8984797762
-reason=MAX rich-post evidence analyzed and idempotency confirmed
+requested_at=2026-08-07T06:51:30Z
+artifact_ids=8984901975
+reason=MAX scheduled-message verify-only receipt analyzed
