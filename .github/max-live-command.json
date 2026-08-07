@@ -1,13 +1,22 @@
 {
   "version": 2,
-  "requestId": "max-safe-stage-send-now-text-20260807-idempotency",
+  "requestId": "max-safe-stage-rich-post-20260807-1",
   "destination": {
     "query": "тестовая група",
     "kind": "group"
   },
   "content": {
-    "type": "text",
-    "text": "Тест безопасной двухфазной отправки: сообщение подготовлено в отложенных и отправлено сейчас."
+    "type": "rich_post",
+    "text": "Тест невидимой подготовки публикации: изображение, подпись и форматированная ссылка сначала проверены в отложенных.",
+    "image": {
+      "path": "generated/max-test-post.png"
+    },
+    "links": [
+      {
+        "text": "Открыть календарь событий",
+        "url": "https://kenigevents.ru/"
+      }
+    ]
   },
   "delivery": {
     "mode": "send_now",
