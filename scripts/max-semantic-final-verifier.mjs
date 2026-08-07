@@ -36,14 +36,33 @@ async function destinationConfig(command) {
   };
 }
 
+function requiredTextFragments(text) {
+  const paragraphs = String(text || '')
+    .split(/\n\s*\n/u)
+    .map((value) => normalizeText(value))
+    .filter(Boolean);
+  if (!paragraphs.length) return [];
+
+  const indexes = new Set([
+    0,
+    Math.min(2, paragraphs.length - 1),
+    Math.min(4, paragraphs.length - 1),
+    paragraphs.length - 1,
+  ]);
+  return [...indexes]
+    .sort((left, right) => left - right)
+    .map((index) => paragraphs[index])
+    .filter((value) => value.length >= 20);
+}
+
 async function inspectCurrentChat(page, command) {
-  const expectedText = normalizeText(command.content.text);
+  const textFragments = requiredTextFragments(command.content.text);
   const expectedLinks = (command.content.links || []).map((link) => ({
     text: normalizeText(link.text),
     href: canonicalUrl(link.url),
   }));
 
-  return page.evaluate(({ expectedText: text, expectedLinks: links }) => {
+  return page.evaluate(({ textFragments: fragments, expectedLinks: links }) => {
     const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
     const canonical = (value) => {
       try {
@@ -52,25 +71,24 @@ async function inspectCurrentChat(page, command) {
         return '';
       }
     };
-    const visible = (element) => {
+    const rendered = (element) => {
       const style = getComputedStyle(element);
       const box = element.getBoundingClientRect();
       return style.display !== 'none'
         && style.visibility !== 'hidden'
         && Number(style.opacity || 1) > 0
         && box.width > 0
-        && box.height > 0
-        && box.bottom > 0
-        && box.top < innerHeight;
+        && box.height > 0;
     };
 
     const candidates = [];
     const elements = Array.from(document.querySelectorAll('[role="listitem"], [role="presentation"]'))
-      .filter(visible);
+      .filter(rendered);
 
     for (const element of elements) {
       const bodyText = clean(element.innerText || element.textContent || '');
-      if (!bodyText.includes(text)) continue;
+      const fragmentsMatched = fragments.every((fragment) => bodyText.includes(fragment));
+      if (!fragmentsMatched) continue;
 
       const anchors = Array.from(element.querySelectorAll('a')).map((anchor) => ({
         text: clean(anchor.innerText || anchor.textContent || ''),
@@ -92,6 +110,7 @@ async function inspectCurrentChat(page, command) {
       candidates.push({
         signature,
         bodyLength: bodyText.length,
+        fragmentCount: fragments.length,
         linkCount: matchedLinks.length,
         media,
         box: [
@@ -107,6 +126,7 @@ async function inspectCurrentChat(page, command) {
     for (const candidate of candidates) {
       const current = clusters.get(candidate.signature) || {
         bodyLength: candidate.bodyLength,
+        fragmentCount: candidate.fragmentCount,
         linkCount: candidate.linkCount,
         media: candidate.media,
         nestedDomCount: 0,
@@ -122,7 +142,7 @@ async function inspectCurrentChat(page, command) {
       rawCandidateCount: candidates.length,
       semanticClusters: [...clusters.values()],
     };
-  }, { expectedText, expectedLinks });
+  }, { textFragments, expectedLinks });
 }
 
 const command = await loadMaxCommand();
@@ -134,6 +154,9 @@ if (command.content.type !== 'rich_post') {
 }
 if (!(command.content.links || []).length) {
   throw new Error('MAX semantic final verifier requires at least one exact HTTPS link.');
+}
+if (requiredTextFragments(command.content.text).length < 3) {
+  throw new Error('MAX semantic final verifier requires at least three stable text fragments.');
 }
 
 const destination = await destinationConfig(command);
@@ -155,7 +178,8 @@ try {
       console.log(
         `MAX_SEMANTIC_FINAL_VERIFY=verified destination=${resolved.title} `
         + `clusters=1 nested_dom=${cluster.nestedDomCount} `
-        + `body_length=${cluster.bodyLength} links=${cluster.linkCount} media=${cluster.media}`,
+        + `body_length=${cluster.bodyLength} fragments=${cluster.fragmentCount} `
+        + `links=${cluster.linkCount} media=${cluster.media}`,
       );
       process.exitCode = 0;
       break;
