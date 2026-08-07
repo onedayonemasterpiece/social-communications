@@ -1,14 +1,14 @@
 {
   "name": "social-communications",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "scripts": {
     "max:canary": "node --import ./scripts/max-cookie-compat.mjs scripts/max-web-canary-entry.mjs",
-    "max:send": "node --import ./scripts/max-schedule-ui-compat.mjs scripts/max-send.mjs",
+    "max:send": "node --import ./scripts/max-schedule-ui-compat.mjs scripts/max-command-runner.mjs",
     "max:test-image": "node scripts/max-generate-test-image.mjs generated/max-test-post.png",
     "max:session:capture": "node scripts/max-session-capture-local.mjs",
-    "max:session:syntax": "node --check scripts/max-cookie-compat.mjs && node --check scripts/max-schedule-ui-compat.mjs && node --check scripts/max-runtime.mjs && node --check scripts/max-ui.mjs && node --check scripts/max-send.mjs && node --check scripts/max-generate-test-image.mjs && node --check scripts/max-web-canary-entry.mjs && node --check scripts/max-session-capture-local.mjs && node --check scripts/max-session-export-console.js"
+    "max:session:syntax": "node --check scripts/max-cookie-compat.mjs && node --check scripts/max-schedule-ui-compat.mjs && node --check scripts/max-runtime.mjs && node --check scripts/max-ui.mjs && node --check scripts/max-rich-post-verifier.mjs && node --check scripts/max-command-runner.mjs && node --check scripts/max-send.mjs && node --check scripts/max-generate-test-image.mjs && node --check scripts/max-web-canary-entry.mjs && node --check scripts/max-session-capture-local.mjs && node --check scripts/max-session-export-console.js"
   },
   "dependencies": {
     "playwright": "1.62.0"
