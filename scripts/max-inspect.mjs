@@ -26,6 +26,15 @@ const result = {
   attachment: null,
 };
 
+async function setSpinbutton(page, label, value) {
+  const spin = page.getByRole('spinbutton', { name: label, exact: true });
+  await spin.click();
+  await spin.press('Control+A').catch(() => {});
+  await spin.pressSequentially(value, { delay: 80 });
+  await page.waitForTimeout(250);
+  return spin.textContent();
+}
+
 let runtime;
 try {
   runtime = await launchAuthenticatedMax();
@@ -46,63 +55,42 @@ try {
   await typePlainText(composer, 'Черновик диагностики — не отправлять');
   await sendButton.click({ button: 'right' });
   await runtime.page.waitForTimeout(800);
-  result.rightClick = {
-    overlayText: await visibleOverlayText(runtime.page),
-  };
+  result.rightClick = { overlayText: await visibleOverlayText(runtime.page) };
   await captureEvidence(runtime.page, artifactDir, '02-send-context-menu');
 
   await runtime.page.getByRole('menuitem', { name: 'Отправить позже', exact: true }).click();
   await runtime.page.waitForTimeout(800);
-  result.scheduleDialog = await runtime.page.evaluate(() => {
-    const clean = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
-    const visible = (element) => {
-      const style = getComputedStyle(element);
-      const box = element.getBoundingClientRect();
-      return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) > 0 && box.width > 0 && box.height > 0;
-    };
-    const describe = (element) => ({
-      tag: element.tagName.toLowerCase(),
-      type: element.getAttribute('type') || '',
-      role: element.getAttribute('role') || '',
-      aria: element.getAttribute('aria-label') || '',
-      title: element.getAttribute('title') || '',
-      placeholder: element.getAttribute('placeholder') || '',
-      value: 'value' in element ? String(element.value || '') : clean(element.textContent || ''),
-      text: clean(element.innerText || element.textContent || ''),
-      tabIndex: element.tabIndex,
-      className: typeof element.className === 'string' ? element.className.slice(0, 300) : '',
-      dataTestid: element.getAttribute('data-testid') || '',
-      box: (() => {
-        const box = element.getBoundingClientRect();
-        return [Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)];
-      })(),
-    });
-    return {
-      fields: Array.from(document.querySelectorAll('input, textarea, select, [contenteditable="true"], [role="spinbutton"]'))
-        .filter(visible)
-        .map(describe),
-      clickables: Array.from(document.querySelectorAll('button, [role="button"], [role="spinbutton"], [tabindex]'))
-        .filter(visible)
-        .map(describe)
-        .filter((item) => item.box[0] >= 470 || /Отправить позже|Август|Часы|Минуты/.test(`${item.text} ${item.aria}`))
-        .slice(0, 300),
-    };
-  });
-  result.scheduleDialog.overlayText = await visibleOverlayText(runtime.page);
-  await captureEvidence(runtime.page, artifactDir, '03-schedule-dialog');
+  const targetDay = runtime.page.locator('button.day:not(.day--otherMonth):not(.day--disabled)').filter({ hasText: /^8$/ });
+  if (await targetDay.count() !== 1) throw new Error(`Expected one selectable calendar day 8, found ${await targetDay.count()}.`);
+  await targetDay.click();
+  const hours = await setSpinbutton(runtime.page, 'Часы', '11');
+  const minutes = await setSpinbutton(runtime.page, 'Минуты', '00');
+  await runtime.page.waitForTimeout(400);
+  const confirmation = await runtime.page.locator('button').filter({ hasText: /^Отправить / }).first().innerText();
+  result.scheduleDialog = {
+    selectedDay: '8',
+    hours: String(hours || '').trim(),
+    minutes: String(minutes || '').trim(),
+    confirmation: String(confirmation || '').trim(),
+  };
+  await captureEvidence(runtime.page, artifactDir, '03-schedule-configured-dry-run');
 
   await runtime.page.keyboard.press('Escape').catch(() => {});
   await runtime.page.keyboard.press('Escape').catch(() => {});
 
-  const chooserPromise = runtime.page.waitForEvent('filechooser', { timeout: 5_000 });
   await attachmentButton.click();
+  await runtime.page.waitForTimeout(400);
+  result.attachment = {
+    menuText: await visibleOverlayText(runtime.page),
+  };
+  const photoOption = runtime.page.getByText('Фото или видео', { exact: true });
+  const chooserPromise = runtime.page.waitForEvent('filechooser', { timeout: 5_000 });
+  await photoOption.click();
   const chooser = await chooserPromise;
   const chooserElement = chooser.element();
-  result.attachment = {
-    multiple: chooser.isMultiple(),
-    accept: await chooserElement.getAttribute('accept'),
-    inputType: await chooserElement.getAttribute('type'),
-  };
+  result.attachment.multiple = chooser.isMultiple();
+  result.attachment.accept = await chooserElement.getAttribute('accept');
+  result.attachment.inputType = await chooserElement.getAttribute('type');
 
   await clearComposer(composer);
   result.status = 'pass';
