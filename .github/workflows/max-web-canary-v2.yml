@@ -15,6 +15,10 @@ on:
         default: Привет мир
         type: string
 
+concurrency:
+  group: max-web-canary-v2
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -23,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      MAX_SESSION: ${{ secrets.max_session || secrets.MAX_SESSION || vars.max_session || vars.MAX_SESSION }}
+      MAX_SESSION: ${{ secrets.max_session || secrets.MAX_SESSION }}
       MAX_MESSAGE: ${{ github.event.inputs.message || 'Привет мир' }}
       MAX_ARTIFACT_DIR: artifacts/max-web
 
@@ -33,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${MAX_SESSION:-}" ]]; then
-            echo "::error::MAX session is absent from both Actions secrets and Actions variables (max_session/MAX_SESSION)."
+            echo "::error::MAX session is absent from repository secret max_session/MAX_SESSION."
             exit 1
           fi
           echo "MAX_SESSION_AVAILABLE=1"
@@ -46,11 +50,16 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Capture redacted MAX session structure
-        run: node scripts/max-session-shape.mjs
+      - name: Validate source syntax
+        run: npm run max:session:syntax
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+
+      - name: Validate reproducible MAX session contract
+        env:
+          MAX_SESSION_VALIDATE_ONLY: '1'
+        run: npm run max:canary
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
