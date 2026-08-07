@@ -1,0 +1,59 @@
+name: MAX registered destinations smoke
+run-name: MAX destination smoke — ${{ github.event_name }}
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - config/max-destinations.public.json
+      - scripts/max-destination-registry-env.mjs
+      - scripts/max-destination-smoke.mjs
+      - scripts/max-destination.mjs
+      - .github/workflows/max-destination-smoke.yml
+  workflow_dispatch:
+    inputs:
+      destination_keys:
+        description: Comma-separated registered destination keys
+        required: false
+        default: polubit-kaliningrad-anonsy,uh-ty-kaliningrad
+        type: string
+
+concurrency:
+  group: max-registered-destinations-smoke
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MAX_SESSION: ${{ secrets.MAX_SESSION }}
+      MAX_DESTINATIONS_JSON: ${{ secrets.MAX_DESTINATIONS_JSON }}
+      MAX_DESTINATION_KEYS: ${{ github.event.inputs.destination_keys }}
+    steps:
+      - name: Verify session secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${MAX_SESSION:-}" ]] || { echo "::error::Repository secret MAX_SESSION is absent."; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate source syntax
+        run: npm run max:session:syntax
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Resolve registered destinations without composing or sending
+        run: npm run max:destination:smoke
