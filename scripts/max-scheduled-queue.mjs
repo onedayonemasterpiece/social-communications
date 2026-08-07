@@ -158,6 +158,7 @@ export async function schedulePreparedComposer(page, scheduleAt, timeZone = 'Eur
   const target = zonedParts(scheduleDate, timeZone);
   const send = await findSendButton(page);
   const { action: menuItem } = await openContextAction(page, send, [
+    'Запланировать пост',
     'Отправить позже',
     'Запланировать отправку',
     'Запланировать',
@@ -187,8 +188,9 @@ export async function schedulePreparedComposer(page, scheduleAt, timeZone = 'Eur
   await confirm.click();
   await confirm.waitFor({ state: 'hidden', timeout: 15_000 }).catch(() => {});
   await page.waitForTimeout(1_500);
-  const dialogStillVisible = await page.getByText('Отправить позже', { exact: true }).isVisible().catch(() => false);
-  if (dialogStillVisible) throw new Error('MAX schedule dialog remained visible after confirmation.');
+  const legacyDialogVisible = await page.getByText('Отправить позже', { exact: true }).isVisible().catch(() => false);
+  const postDialogVisible = await page.getByText('Запланировать пост', { exact: true }).isVisible().catch(() => false);
+  if (legacyDialogVisible || postDialogVisible) throw new Error('MAX schedule dialog remained visible after confirmation.');
 
   return {
     scheduleAt: scheduleDate.toISOString(),
