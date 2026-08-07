@@ -127,19 +127,24 @@ export async function schedulePreparedComposer(page, scheduleAt, timeZone = 'Eur
   };
 }
 
-export async function openScheduledMessages(page) {
+export async function openScheduledMessages(page, options = {}) {
   const existingTitle = await firstVisible(page.getByText('Отложенные сообщения', { exact: true }), 20);
-  if (existingTitle) return { alreadyOpen: true };
+  if (existingTitle) return { alreadyOpen: true, absent: false };
   const scheduledButton = await firstVisible(page.locator([
     'button[aria-label="Открыть отложенные сообщения"]',
     'button[aria-label*="отложенные сообщения" i]',
   ].join(',')));
-  if (!scheduledButton) throw new Error('MAX scheduled-messages button was not found.');
+  if (!scheduledButton) {
+    if (options.allowMissing) {
+      return { alreadyOpen: false, absent: true };
+    }
+    throw new Error('MAX scheduled-messages button was not found.');
+  }
   await scheduledButton.click();
   await page.waitForTimeout(1_200);
   const title = await firstVisible(page.getByText('Отложенные сообщения', { exact: true }), 50);
   if (!title) throw new Error('MAX scheduled-messages view did not open.');
-  return { alreadyOpen: false };
+  return { alreadyOpen: false, absent: false };
 }
 
 async function visibleListItems(page) {
@@ -156,11 +161,28 @@ async function visibleListItems(page) {
   return items;
 }
 
+function emptyScheduledVerification(expectedTime) {
+  return {
+    found: false,
+    ambiguous: false,
+    count: 0,
+    expectedTime,
+    match: null,
+    matches: [],
+  };
+}
+
 export async function findScheduledContent(page, content, options = {}) {
-  await openScheduledMessages(page);
   const expectedTime = options.scheduleAt
     ? zonedTime(new Date(options.scheduleAt), options.timeZone || 'Europe/Kaliningrad')
     : null;
+  const opened = await openScheduledMessages(page, { allowMissing: true });
+  // MAX hides the scheduled-messages button when a destination has no queued
+  // messages. Treat that state as an authoritative empty queue during preflight.
+  // After creation the button must appear; the subsequent strict verification
+  // will still fail safely if it does not.
+  if (opened.absent) return emptyScheduledVerification(expectedTime);
+
   const matches = [];
   for (const item of await visibleListItems(page)) {
     const bodyText = normalizeText(await item.innerText().catch(() => ''));
