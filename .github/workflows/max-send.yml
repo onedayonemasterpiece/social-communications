@@ -63,6 +63,7 @@ jobs:
           node --check scripts/max-wait-before-verify.mjs
           node --check scripts/max-publication-diagnostic.mjs
           node --check scripts/max-semantic-final-verifier.mjs
+          node --check scripts/max-final-message-probe.mjs
           python -m py_compile scripts/generate_amber_combine_poster.py
 
       - name: Install dependencies
@@ -140,6 +141,12 @@ jobs:
         if: always()
         continue-on-error: true
         run: node scripts/max-semantic-final-verifier.mjs
+
+      - name: Inspect exact MAX message formatting and edit controls safely
+        id: format_probe
+        if: always()
+        continue-on-error: true
+        run: node scripts/max-final-message-probe.mjs
 
       - name: Inspect public MAX post and scheduled queue safely
         if: always() && steps.semantic_verify.outcome == 'failure'
