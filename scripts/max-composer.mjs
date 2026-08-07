@@ -14,8 +14,29 @@ function escapeHtml(value) {
   })[character]);
 }
 
+function paragraphBlocks(value) {
+  return String(value ?? '')
+    .replace(/\r\n?/g, '\n')
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+}
+
 export function canonicalUrl(value) {
   return new URL(value).href;
+}
+
+export function richCaptionClipboardPayload(content) {
+  const htmlParts = [paragraphBlocks(content.text)];
+  const plainParts = [content.text];
+  for (const link of content.links) {
+    htmlParts.push(`<p><a href="${escapeHtml(canonicalUrl(link.url))}">${escapeHtml(link.text)}</a></p>`);
+    plainParts.push(link.text);
+  }
+  return {
+    html: htmlParts.join(''),
+    plainText: plainParts.join('\n\n'),
+  };
 }
 
 export async function composerText(composer) {
@@ -64,15 +85,8 @@ async function composerAnchorMatches(composer, link) {
 }
 
 export async function pasteRichCaption(page, composer, content) {
-  const htmlParts = [escapeHtml(content.text).replace(/\n/g, '<br>')];
-  const plainParts = [content.text];
-  for (const link of content.links) {
-    htmlParts.push(`<a href="${escapeHtml(canonicalUrl(link.url))}">${escapeHtml(link.text)}</a>`);
-    plainParts.push(link.text);
-  }
-  const html = `<p>${htmlParts.join('<br>')}</p>`;
-  const plainText = plainParts.join('\n');
-  await setClipboard(page, plainText, html);
+  const payload = richCaptionClipboardPayload(content);
+  await setClipboard(page, payload.plainText, payload.html);
   await composer.click();
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+V' : 'Control+V');
   await page.waitForTimeout(900);
@@ -85,7 +99,8 @@ export async function pasteRichCaption(page, composer, content) {
   }
   return {
     composerHtml: await composer.evaluate((element) => element.innerHTML),
-    plainText,
+    plainText: payload.plainText,
+    html: payload.html,
     atomicPaste: true,
   };
 }
