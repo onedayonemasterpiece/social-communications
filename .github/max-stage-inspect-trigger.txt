@@ -1,3 +1,3 @@
-requested_at=2026-08-07T07:10:00Z
-mode=inspect-scheduled-message-context-menu
+requested_at=2026-08-07T07:13:00Z
+mode=inspect-scheduled-message-context-menu-retry
 chat=Тестовая группа
