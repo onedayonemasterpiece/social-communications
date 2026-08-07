@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "max:canary": "node scripts/max-web-canary-entry.mjs"
+    "max:canary": "node scripts/max-web-canary-entry.mjs",
+    "max:session:capture": "node scripts/max-session-capture-local.mjs",
+    "max:session:syntax": "node --check scripts/max-web-canary-entry.mjs && node --check scripts/max-session-capture-local.mjs && node --check scripts/max-session-export-console.js"
   },
   "dependencies": {
     "playwright": "1.62.0"
