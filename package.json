@@ -1,14 +1,15 @@
 {
   "name": "social-communications",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "scripts": {
     "max:canary": "node --import ./scripts/max-cookie-compat.mjs scripts/max-web-canary-entry.mjs",
-    "max:send": "node --import ./scripts/max-schedule-ui-compat.mjs scripts/max-safe-send.mjs",
+    "max:send": "node scripts/max-send-bootstrap.mjs",
+    "max:destination:smoke": "node scripts/max-destination-smoke.mjs",
     "max:test-image": "node scripts/max-generate-test-image.mjs generated/max-test-post.png",
     "max:session:capture": "node scripts/max-session-capture-local.mjs",
-    "max:session:syntax": "node --check scripts/max-cookie-compat.mjs && node --check scripts/max-schedule-ui-compat.mjs && node --check scripts/max-runtime.mjs && node --check scripts/max-ui.mjs && node --check scripts/max-destination.mjs && node --check scripts/max-command-contract.mjs && node --check scripts/max-composer.mjs && node --check scripts/max-scheduled-queue.mjs && node --check scripts/max-final-verifier.mjs && node --check scripts/max-safe-send.mjs && node --check scripts/max-rich-post-verifier.mjs && node --check scripts/max-scheduled-message-verifier.mjs && node --check scripts/max-command-runner.mjs && node --check scripts/max-send.mjs && node --check scripts/max-generate-test-image.mjs && node --check scripts/max-web-canary-entry.mjs && node --check scripts/max-session-capture-local.mjs && node --check scripts/max-session-export-console.js"
+    "max:session:syntax": "node --check scripts/max-cookie-compat.mjs && node --check scripts/max-destination-registry-env.mjs && node --check scripts/max-send-bootstrap.mjs && node --check scripts/max-destination-smoke.mjs && node --check scripts/max-schedule-ui-compat.mjs && node --check scripts/max-runtime.mjs && node --check scripts/max-ui.mjs && node --check scripts/max-destination.mjs && node --check scripts/max-command-contract.mjs && node --check scripts/max-composer.mjs && node --check scripts/max-scheduled-queue.mjs && node --check scripts/max-final-verifier.mjs && node --check scripts/max-safe-send.mjs && node --check scripts/max-rich-post-verifier.mjs && node --check scripts/max-scheduled-message-verifier.mjs && node --check scripts/max-command-runner.mjs && node --check scripts/max-send.mjs && node --check scripts/max-generate-test-image.mjs && node --check scripts/max-web-canary-entry.mjs && node --check scripts/max-session-capture-local.mjs && node --check scripts/max-session-export-console.js"
   },
   "dependencies": {
     "playwright": "1.62.0"
